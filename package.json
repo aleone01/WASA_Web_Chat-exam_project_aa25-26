@@ -1,1 +1,11 @@
-
+{
+  "name": "@aleone01/server",
+  "version": "1.0.0",
+  "description": "Server app that uses the ORGANIZATION_NAME/PACKAGE_NAME package",
+  "main": "index.js",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "aleone01/npm": "1.0.0"
+  }
+}
