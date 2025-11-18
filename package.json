@@ -6,6 +6,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "aleone01/npm": "1.0.0"
+    "aleone01/package": "1.0.0"
   }
 }
