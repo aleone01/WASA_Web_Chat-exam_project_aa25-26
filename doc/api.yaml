@@ -1,0 +1,676 @@
+openapi: 3.0.0
+servers:
+  - url: "http://localhost:3000/v1"
+    description: "Server locale (v1)"
+
+info:
+  title: WASAText API
+  description: Struttura API del progetto WASAText del corso di Programmazione Web.
+  version: 1.0.0
+
+tags:
+  - name: login
+    description: Operazioni di autenticazione e creazione utente
+  - name: profile
+    description: Operazioni sul profilo utente (username e foto)
+  - name: chats
+    description: Lettura e ricerca di conversazioni e messaggi
+  - name: messages
+    description: Invio, inoltro, reazioni e cancellazione messaggi
+  - name: groups
+    description: Creazione e gestione gruppi
+
+paths:
+
+  /login:
+    post:
+      tags: ["login"]
+      summary: login dell'utente
+      description: accesso dell'utente tramite username; se l'utente non esiste viene creato
+      operationId: doLogin
+      requestBody:
+        description: dettagli utente
+        required: true
+        content:
+          application/json:
+            schema:
+              description: nome utente richiesto per autenticazione/registrazione
+              type: object
+              required: [username]
+              properties:
+                username:
+                  type: string
+                  example: Giorgia
+                  pattern: '^.*?$'
+                  minLength: 3
+                  maxLength: 16
+                  description: nome utente
+      responses:
+        '200':
+          description: utente riconosciuto e loggato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                success:
+                  value:
+                    identifier: 125461561
+        '201':
+          description: utente creato e loggato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                created:
+                  value:
+                    identifier: 125461561
+
+  /users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+
+  /users/{userId}/username:
+    put:
+      tags: ["profile"]
+      summary: cambio dell'username
+      description: viene modificato il nome dell'utente, se unico, e il vecchio viene liberato per il riuso
+      operationId: setMyUserName
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: oggetto contenente il nuovo username 
+              type: object
+              required: [username]
+              properties:
+                username:
+                  type: string
+                  example: Giorgia
+                  pattern: '^.*?$'
+                  minLength: 3
+                  maxLength: 16
+                  description: nuovo username
+      responses:
+        '200':
+          description: username aggiornato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '409':
+          description: username già esistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}/photo:
+    put:
+      tags: ["profile"]
+      summary: aggiorna la foto profilo utente
+      description: aggiorna la foto profilo utente caricando un file 
+      operationId: setMyPhoto
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  minLength: 1
+                  maxLength: 2000
+                  description: Foto profilo in formato binario
+      responses:
+        '200':
+          description: foto aggiornata con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /users/{userId}/chats:
+    get:
+      tags: ["chats"]
+      summary: lista delle conversazioni di un utente
+      description: lista delle conversazioni di un utente in ordine cronologico inverso o per ricerca per username
+      operationId: getMyConversations
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^.*?$'
+            minLength: 3
+            maxLength: 16
+            description: ricerca una conversazione utilizzando un username (opzionale)
+      responses:
+        '200':
+          description: lista conversazioni in ordine cronologico inverso ottenuta con successo (o risultato della ricerca)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    minItems: 0
+                    maxItems: 100
+                    items:
+                      $ref: '#/components/schemas/ChatListItem'
+                description: Ritorna un oggetto con la lista "conversations" ordinata per ultimo messaggio.
+
+  /users/{userId}/chats/{chatId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/ChatId'
+    get:
+      tags: ["chats"]
+      summary: messaggi di una conversazione
+      description: messaggi di una conversazione in ordine cronologico inverso
+      operationId: getConversation
+      responses:
+        '200':
+          description: messaggi di una chat in ordine cronologico inverso ottenuti
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    minItems: 0
+                    maxItems: 2000
+                    items:
+                      $ref: '#/components/schemas/Message'
+                description: Oggetto che contiene la lista "messages" ordinata per campo sentAt (più recente primo).
+
+  /users/{userId}/chats/{chatId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/ChatId'
+    post:
+      tags: ["messages"]
+      summary: invia un nuovo messaggio in una conversazione
+      description: invia un nuovo messaggio in una conversazione esistente e o la crea se è il primo messaggio
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: testo del messaggio
+                  minLength: 0
+                  maxLength: 2000
+                photo:
+                  type: string
+                  format: binary
+                  minLength: 10
+                  maxLength: 200
+                  description: allegato fotografico opzionale
+                replyToMessageId:
+                  type: integer
+                  description: se presente, id del messaggio di reply
+      responses:
+        '200':
+          description: messaggio inviato con successo in chat esistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '201':
+          description: chat creata e messaggio inviato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /users/{userId}/chats/{chatId}/messages/{messageId}/forward:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/ChatId'
+      - $ref: '#/components/parameters/MessageId'
+    post:
+      tags: ["messages"]
+      summary: inoltra un messaggio ad una o più destinazioni
+      description: inoltra un messaggio ad una o più destinazioni speicificate con un lista di userId
+      operationId: forwardMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targets]
+              properties:
+                targets:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: integer
+                  description: lista di chatId a cui inoltrare il messaggio
+      responses:
+        '200':
+          description: messaggio inoltrato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /users/{userId}/chats/{chatId}/messages/{messageId}/reactions:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/ChatId'
+      - $ref: '#/components/parameters/MessageId'
+    post:
+      tags: ["messages"]
+      summary: aggiungi una reazione a un messaggio
+      description: aggiungi una reazione a un messaggio selezionando un emoticon sotto forma di unicode o shortcode
+      operationId: commentMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoticon]
+              properties:
+                emoticon:
+                  type: string
+                  description: emoticon unicode o shortcode
+                  minLength: 1
+                  maxLength: 64
+      responses:
+        '201':
+          description: reazione aggiunta con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reaction'
+
+    delete:
+      tags: ["messages"]
+      summary: rimuove una reazione da un messaggio
+      description: rimuove una propria reazione da un messaggio inviato dall'utente corrente
+      operationId: uncommentMessage
+      responses:
+        '204':
+          description: reazione rimossa con successo
+
+  /users/{userId}/chats/{chatId}/messages/{messageId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/ChatId'
+      - $ref: '#/components/parameters/MessageId'
+    delete:
+      tags: ["messages"]
+      summary: elimina un messaggio inviato
+      description: elimina un proprio messaggio inviato in una delle proprie chat
+      operationId: deleteMessage
+      responses:
+        '204':
+          description: messaggio eliminato con successo
+
+  /groups:
+    post:
+      tags: ["groups"]
+      summary: crea un nuovo gruppo con membri iniziali
+      description: crea un nuovo gruppo con membri iniziali e creatore compresi, selezionando titolo e foto di gruppo
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, photo, members]
+              properties:
+                name:
+                  type: string
+                  description: Nome del gruppo
+                  minLength: 1
+                  maxLength: 100
+                  pattern: '^.*?$'
+                photo:
+                  type: string
+                  format: binary
+                  minLength: 10
+                  maxLength: 200
+                  description: Foto del gruppo in formato binario
+                members:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: integer
+                  description: lista di utenti (il creatore è incluso automaticamente)
+      responses:
+        '201':
+          description: gruppo creato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+
+  /groups/{groupId}/members:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      tags: ["groups"]
+      summary: aggiunge membri al gruppo
+      description: un membro aggiunge nuovi membri ad un gruppo esistente
+      operationId: addToGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [members]
+              properties:
+                members:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: membri aggiunti con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '403':
+          description: utente non appartenente al gruppo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: membri da aggiungere non trovati
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/leave:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    delete:
+      tags: ["groups"]
+      summary: lascia un gruppo
+      description: l'utente corrente abbandona un gruppo esistente di cui è membro
+      operationId: leaveGroup
+      responses:
+        '204':
+          description: abbandono effettuato con successo
+
+  /groups/{groupId}/name:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: ["groups"]
+      summary: aggiorna il nome del gruppo
+      description: un membro aggiorna il nome di un gruppo esistente con uno nuovo
+      operationId: setGroupName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  pattern: '^.*?$'
+      responses:
+        '200':
+          description: nome del gruppo aggiornato con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '403':
+          description: utente non appartenente al gruppo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/photo:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    put:
+      tags: ["groups"]
+      summary: aggiorna la foto del gruppo
+      description: un membro aggiorna la foto di un gruppo esistente caricando un file
+      operationId: setGroupPhoto
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: url
+                  minLength: 10
+                  maxLength: 200
+      responses:
+        '200':
+          description: foto del gruppo aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '403':
+          description: utente non appartenente al gruppo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Identificatore numerico dell'utente
+
+    ChatId:
+      name: chatId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Identificatore numerico della chat
+
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Identificatore numerico del messaggio
+
+  schemas:
+
+    LoginResponse:
+      type: object
+      description: Risposta contenente l'identificatore dell'utente
+      properties:
+        identifier:
+          type: integer
+          example: 125461561
+
+    User:
+      type: object
+      description: Rappresenta un utente del sistema
+      properties:
+        id:
+          type: integer
+          description: Identificatore utente
+        username:
+          type: string
+          pattern: '^.*?$'
+          minLength: 3
+          maxLength: 16
+          description: Nome utente unico
+        profilePhoto:
+          type: string
+          format: url
+          description: URL verso la foto profilo
+
+    Group:
+      type: object
+      description: Rappresenta un gruppo di chat
+      properties:
+        id:
+          type: integer
+          description: Identificatore del gruppo
+        groupname:
+          type: string
+          description: Nome visualizzato del gruppo
+        groupPhoto:
+          type: string
+          format: url
+          description: URL della foto del gruppo
+        membersList:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: integer
+          description: Lista di id utenti membri del gruppo
+
+    ChatListItem:
+      type: object
+      description: Dati sintetici di una conversazione per la lista
+      properties:
+        id:
+          type: integer
+          description: Identificatore della chat
+        isGroup:
+          type: boolean
+          description: true se la conversazione è di gruppo
+        photoChat:
+          type: string
+          format: url
+          minLength: 10
+          maxLength: 200
+          description: URL dell'immagine rappresentativa della chat
+        lastMessage:
+          type: string
+          format: date-time
+          description: Timestamp dell'ultimo messaggio
+        snippetText:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Anteprima del testo dell'ultimo messaggio
+        snippetIcon:
+          type: string
+          format: url
+          minLength: 10
+          maxLength: 200
+          description: Icona o immagine associata all'anteprima
+          
+    Message:
+      type: object
+      description: Rappresenta un messaggio inviato in una chat
+      properties:
+        id:
+          type: integer
+          description: Identificatore del messaggio
+        text:
+          type: string
+          description: Testo del messaggio
+          minLength: 0
+          maxLength: 2000
+        sentAt:
+          type: string
+          format: date-time
+          description: Data/ora di invio
+        sentBy:
+          type: integer
+          description: id utente che ha inviato
+        checkmark:
+          type: boolean
+          description: stato di consegna/lettura
+
+    Reaction:
+      type: object
+      description: Rappresenta una reazione a un messaggio
+      properties:
+        reactTo:
+          type: integer
+          description: id del messaggio a cui reagire
+        emoticon:
+          type: string
+          description: emoticon unicode o shortcode
+          minLength: 1
+          maxLength: 64
+
+    Error:
+      type: object
+      description: Schema di errore generico
+      properties:
+        code:
+          type: integer
+          description: Codice di errore
+        message:
+          type: string
+          minLength: 5
+          maxLength: 200
+          description: Messaggio di spiegazione dell'errore
+
+
