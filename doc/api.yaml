@@ -20,6 +20,9 @@ tags:
   - name: groups
     description: Creazione e gestione gruppi
 
+security:
+   - LegacyAuth: []
+
 paths:
 
   /login:
@@ -28,6 +31,7 @@ paths:
       summary: login dell'utente
       description: accesso dell'utente tramite username; se l'utente non esiste viene creato
       operationId: doLogin
+      security: []
       requestBody:
         description: dettagli utente
         required: true
@@ -102,6 +106,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+              examples:
+                success:
+                  value:
+                    User:
+                      id: 125461561
+                      username: nuovo username
+                      profilePhoto: "https://example.com/photo.jpg"          
         '409':
           description: username già esistente
           content:
@@ -124,13 +135,14 @@ paths:
             schema:
               type: object
               required: [photo]
+              description: richiesta della foto profilo da caricare
               properties:
                 photo:
                   type: string
                   format: binary
                   minLength: 1
                   maxLength: 2000
-                  description: Foto profilo in formato binario
+                  description: foto profilo in formato binario
       responses:
         '200':
           description: foto aggiornata con successo
@@ -138,6 +150,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+              examples:
+                success:
+                  value:
+                    User:
+                      id: 125461561
+                      username: Mario
+                      profilePhoto: nuova foto caricata  
 
   /users/{userId}/chats:
     get:
@@ -150,6 +169,7 @@ paths:
         - name: username
           in: query
           required: false
+          description: parametri richiedenti lo userid e l'esistenza di esso
           schema:
             type: string
             pattern: '^.*?$'
@@ -163,14 +183,22 @@ paths:
             application/json:
               schema:
                 type: object
+                description: ritorna un oggetto con la lista "conversations" ordinata per ultimo messaggio.
                 properties:
-                  conversations:
+                  chats:
                     type: array
                     minItems: 0
                     maxItems: 100
                     items:
                       $ref: '#/components/schemas/ChatListItem'
-                description: Ritorna un oggetto con la lista "conversations" ordinata per ultimo messaggio.
+              example:
+                    conversations:
+                        - id: 10
+                          isGroup: false
+                          photoChat: "https://example.com/chat.jpg"
+                          lastMessage: "2024-01-20T10:00:00Z"
+                          snippetText: "Ciao!"
+                          snippetIcon: "https://example.com/icon.png"
 
   /users/{userId}/chats/{chatId}:
     parameters:
@@ -187,6 +215,7 @@ paths:
           content:
             application/json:
               schema:
+                description: oggetto che contiene la lista "messages" ordinata per campo sentAt (più recente primo).
                 type: object
                 properties:
                   messages:
@@ -195,7 +224,10 @@ paths:
                     maxItems: 2000
                     items:
                       $ref: '#/components/schemas/Message'
-                description: Oggetto che contiene la lista "messages" ordinata per campo sentAt (più recente primo).
+              examples:
+                success:
+                  value:
+                    list: [46156161, 15156160, 515166151]
 
   /users/{userId}/chats/{chatId}/messages:
     parameters:
@@ -212,12 +244,14 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              description: oggetto che costruisce il messaggio da inviare
               properties:
                 text:
                   type: string
                   description: testo del messaggio
                   minLength: 0
                   maxLength: 2000
+                  pattern:  ".*"
                 photo:
                   type: string
                   format: binary
@@ -234,12 +268,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+              examples:
+                success:
+                  value:
+                    Message:
+                      id: 2151531561
+                      text: "Hey ciao!"
+                      sentBy: Lucia
+                      sentAt: 2024-05-20T15:00:00Z
+                      checkmark: true
+              
         '201':
           description: chat creata e messaggio inviato con successo
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+              examples:
+                success:
+                  value:
+                    Message:
+                      id: 2151531561
+                      text: "Hey ciao!"
+                      sentBy: Lucia
+                      sentAt: 2024-05-20T15:00:00Z
+                      checkmark: true
 
   /users/{userId}/chats/{chatId}/messages/{messageId}/forward:
     parameters:
@@ -258,6 +311,7 @@ paths:
             schema:
               type: object
               required: [targets]
+              description: oggetto creante la lista di tutti gli utenti a cui inoltrare il messaggio
               properties:
                 targets:
                   type: array
@@ -273,7 +327,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
-
+              examples:
+                success:
+                  value:
+                    Message:
+                      id: 2151531561
+                      text: "Hey ciao!"
+                      sentBy: Lucia
+                      sentAt: 2024-05-20T15:00:00Z
+                      checkmark: false 
+            
   /users/{userId}/chats/{chatId}/messages/{messageId}/reactions:
     parameters:
       - $ref: '#/components/parameters/UserId'
@@ -291,10 +354,12 @@ paths:
             schema:
               type: object
               required: [emoticon]
+              description: oggetto che ritorna l'unicode della emoticon che l'utente desidere usare
               properties:
                 emoticon:
                   type: string
                   description: emoticon unicode o shortcode
+                  pattern: ".*"
                   minLength: 1
                   maxLength: 64
       responses:
@@ -304,6 +369,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reaction'
+              examples:
+                success:
+                  value:
+                    User:
+                      reactTo: 2151531561
+                      emoticon: 🙂                    
 
     delete:
       tags: ["messages"]
@@ -341,6 +412,7 @@ paths:
             schema:
               type: object
               required: [name, photo, members]
+              description: oggetto che ritorna le componenti di costruzione di un gruppo
               properties:
                 name:
                   type: string
@@ -368,12 +440,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              examples:
+                success:
+                  value:
+                    Group:
+                      id: 5161545165
+                      groupname: Fantacalcio 2025
+                      groupPhoto: "https://example.com/photo.jpg" 
+                      membersList:  [23413453421, 53344234531, 453123453, 453123453]
 
   /groups/{groupId}/members:
     parameters:
       - name: groupId
         in: path
         required: true
+        description: Identificatore numerico del gruppo
         schema:
           type: integer
           minimum: 1
@@ -389,6 +470,7 @@ paths:
             schema:
               type: object
               required: [members]
+              description: oggetto che ritorna la lista di membri da aggiungere
               properties:
                 members:
                   type: array
@@ -403,6 +485,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              examples:
+                success:
+                  value:
+                    Group:
+                      id: 5161545165
+                      groupname: Fantacalcio 2025
+                      groupPhoto: "https://example.com/photo.jpg" 
+                      membersList:  [23413453421, 53344234531, 453123453, 453123453]
         '403':
           description: utente non appartenente al gruppo
           content:
@@ -421,6 +511,7 @@ paths:
       - name: groupId
         in: path
         required: true
+        description: Identificatore numerico del gruppo
         schema:
           type: integer
           minimum: 1
@@ -438,6 +529,7 @@ paths:
       - name: groupId
         in: path
         required: true
+        description: Identificatore numerico del gruppo
         schema:
           type: integer
           minimum: 1
@@ -453,6 +545,7 @@ paths:
             schema:
               type: object
               required: [name]
+              description: oggetto che ritorna il nuovo nome da dare al gruppo
               properties:
                 name:
                   type: string
@@ -466,6 +559,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              examples:
+                success:
+                  value:
+                    Group:
+                      id: 5161545165
+                      groupname: nuovo nome
+                      groupPhoto: "https://example.com/photo.jpg" 
+                      membersList:  [23413453421, 53344234531, 453123453, 453123453]
         '403':
           description: utente non appartenente al gruppo
           content:
@@ -478,6 +579,7 @@ paths:
       - name: groupId
         in: path
         required: true
+        description: Identificatore numerico del gruppo
         schema:
           type: integer
           minimum: 1
@@ -492,6 +594,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              description: oggetto che ritorna la foto da caricare per il gruppo
               properties:
                 image:
                   type: string
@@ -505,6 +608,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              examples:
+                success:
+                  value:
+                    Group:
+                      id: 5161545165
+                      groupname: Fantacalcio 2025
+                      groupPhoto: nuova foto caricata
+                      membersList:  [23413453421, 53344234531, 453123453, 453123453]
         '403':
           description: utente non appartenente al gruppo
           content:
@@ -515,6 +626,7 @@ paths:
 components:
 
   parameters:
+
     UserId:
       name: userId
       in: path
@@ -550,6 +662,7 @@ components:
       properties:
         identifier:
           type: integer
+          description: Identificatore univoco dell'utente
           example: 125461561
 
     User:
@@ -580,6 +693,7 @@ components:
         groupname:
           type: string
           description: Nome visualizzato del gruppo
+          pattern: "^.*$"
         groupPhoto:
           type: string
           format: url
@@ -662,7 +776,7 @@ components:
 
     Error:
       type: object
-      description: Schema di errore generico
+      description: schema di errore generico
       properties:
         code:
           type: integer
@@ -671,6 +785,14 @@ components:
           type: string
           minLength: 5
           maxLength: 200
-          description: Messaggio di spiegazione dell'errore
+          pattern: "^.*$"
+          description: messaggio di spiegazione dell'errore
 
+  securitySchemes: 
+
+    LegacyAuth:
+      type: apiKey
+      name: sessionToken
+      in: header
+      description: valore del token inviato dal server nel momento di login 
 
