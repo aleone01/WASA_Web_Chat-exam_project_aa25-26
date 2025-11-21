@@ -186,6 +186,7 @@ paths:
                 description: ritorna un oggetto con la lista "conversations" ordinata per ultimo messaggio.
                 properties:
                   chats:
+                    description: Elenco delle conversazioni trovate o esistenti
                     type: array
                     minItems: 0
                     maxItems: 100
@@ -219,6 +220,7 @@ paths:
                 type: object
                 properties:
                   messages:
+                    description: Lista dei messaggi appartenenti alla conversazione
                     type: array
                     minItems: 0
                     maxItems: 2000
@@ -473,6 +475,7 @@ paths:
               description: oggetto che ritorna la lista di membri da aggiungere
               properties:
                 members:
+                  description: Lista degli ID utente da aggiungere
                   type: array
                   minItems: 1
                   maxItems: 2000
@@ -548,6 +551,7 @@ paths:
               description: oggetto che ritorna il nuovo nome da dare al gruppo
               properties:
                 name:
+                  description: Il nuovo nome del gruppo
                   type: string
                   minLength: 1
                   maxLength: 100
@@ -597,6 +601,7 @@ paths:
               description: oggetto che ritorna la foto da caricare per il gruppo
               properties:
                 image:
+                  description: URL o dati della nuova foto
                   type: string
                   format: url
                   minLength: 10
@@ -794,5 +799,4 @@ components:
       type: apiKey
       name: sessionToken
       in: header
-      description: valore del token inviato dal server nel momento di login 
-
+      description: valore del token inviato dal server nel momento di login
