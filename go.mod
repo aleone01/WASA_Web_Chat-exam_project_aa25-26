@@ -1,6 +1,6 @@
-module git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated
+module github.com/aleone01/Web-Project-repo
 
-go 1.17
+go 1.25
 
 require (
 	github.com/ardanlabs/conf v1.5.0
