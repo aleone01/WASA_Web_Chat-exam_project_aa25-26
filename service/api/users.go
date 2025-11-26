@@ -2,156 +2,119 @@ package api
 
 import 
 (
+	"github.com/aleone01/Web-Project-repo/service/globaltime"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
-	"fmt"
 	"time"
-    "os"
 )
 
-// SetMyUserName permette all'utente di modificare il proprio username.
-func (rt *Router) SetMyUsername(w http.ResponseWriter, r *http.Request, userId int) 
-{
-	// decodifica della requestBody
-	var reqBody SetMyUserNameJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil 
+// SetMyUserName gestisce il cambio username (PUT /users/{userId}/username)
+func (rt *Router) SetMyUserName(w http.ResponseWriter, r *http.Request, userId int) {
+	
+	// controlla che l'utente sia  se stesso
+	if err := rt.checkAuth(w, r, userId); err != nil 
 	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Formato JSON non valido")
 		return
 	}
 
-	// verifica dei vincoli sullo username
-	if reqBody.Username == nil || len(*reqBody.Username) < 3 || len(*reqBody.Username) > 16 
+	// parsing JSON
+	var reqBody struct 
 	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Username non valido (lunghezza 3-16 caratteri)")
+		Username *string `json:"username"`
+	}
+
+	// in caso di errore nel decoding
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	newUsername := *reqBody.Username
-
-	// verifica autorizzazione: l'utente loggato deve corrispondere all'ID nel path
-	// (Nota: Questo richiede che tu abbia implementato un middleware per estrarre l'utente dalla sessione)
-	// if userId != authenticatedUser { ... }
+	// in caso di username non valido
+	if reqBody.Username == nil || len(*reqBody.Username) < 3 || len(*reqBody.Username) > 16 {
+		rt.sendError(w, http.StatusBadRequest, 400, "Username non valido (3-16 caratteri)")
+		return
+	}
 
 	// chiamata al database per aggiornare l'username
-	updatedUser, err := rt.db.SetUsername(userId, newUsername)
+	user, err := rt.db.SetMyUsername(userId, *reqBody.Username)
+	// in caso di errore nell'aggiornamento
 	if err != nil 
 	{
-		// se l'username è già esistente (codice 409)
-		if err.Error() == "username already exists" 
-		{
-			rt.sendError(w, http.StatusConflict, 409, "Username già esistente")
-			return
-		}
-
-		// caso di errore interno del server
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore interno durante l'aggiornamento username")
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore aggiornamento username")
 		return
 	}
 
-	// conversione della struct database 
-	response := User
-	{
-		Id:           &updatedUser.ID,
-		Username:     &updatedUser.Username,
-		ProfilePhoto: &updatedUser.ProfilePhoto,
-	}
-
-	// ritorno del successo
+	// risposta con il nuovo profilo utente
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(user)
 }
 
-// SetMyPhoto permette all'utente di aggiornare la propria foto profilo
+// SetMyPhoto gestisce il cambio foto (PUT /users/{userId}/photo)
 func (rt *Router) SetMyPhoto(w http.ResponseWriter, r *http.Request, userId int) 
 {
-	// in caso di errore nel parsing del form
-	if err := r.ParseMultipartForm(10 << 20); err != nil 
+	
+	// Check Auth
+	if err := rt.checkAuth(w, r, userId); err != nil 
 	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Impossibile leggere i dati")
 		return
 	}
 
-	// recupero dell'immagine dal form 
+	// parsing Multipart 
+	if err := r.ParseMultipartForm(10 << 20); err != nil 
+	{
+		rt.sendError(w, http.StatusBadRequest, 400, "File troppo grande o errore form")
+		return
+	}
+
+	// estrazione del File
 	file, fileHeader, err := r.FormFile("photo")
-	// in caso di errore nel recupero del file
 	if err != nil 
 	{
-		rt.sendError(w, http.StatusBadRequest, 400, "File foto mancante o non valido")
+		rt.sendError(w, http.StatusBadRequest, 400, "Campo 'photo' mancante")
 		return
 	}
 	defer file.Close()
 
-	// lettura dei byte del file
-	fileBytes, err := io.ReadAll(file)
-	// in caso di errore nella lettura del file
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore nella lettura del file")
-		return
-	}
-
-	// controllo del file 
-	if len(fileBytes) == 0 
-	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Il file inviato è vuoto")
-		return
-	}
-
-	// creazione di una cartella di storage, se non esiste
+	// salvataggio su disco
 	storagePath := "./images"
-	// in caso di errore nella creazione della cartella
-    if err := os.MkdirAll(storagePath, os.ModePerm); err != nil 
-    {
-        rt.sendError(w, http.StatusInternalServerError, 500, "Errore interno del server")
-        return
-    }
+	os.MkdirAll(storagePath, 0755) // crea la cartella se non esiste
 
-    // creazione di un nome file univoco, per evitare sovrascritture e conflitti
-    filename := fmt.Sprintf("user_%d_%d%s", userId, time.Now().Unix(), filepath.Ext(fileHeader.Filename))
-    fullPath := filepath.Join(storagePath, filename)
+	// nome unico per il file
+	filename := fmt.Sprintf("u%d_%d%s", userId, globaltime.Now().Unix(), filepath.Ext(fileHeader.Filename))
+	fullPath := filepath.Join(storagePath, filename)
 
-    // creazione del file fisico sul disco del server
-    destinationFile, err := os.Create(fullPath)
-	// in caso di errore nella creazione del file
-    if err != nil 
-    {
-        rt.sendError(w, http.StatusInternalServerError, 500, "Impossibile salvare il file")
-        return
-    }
-    defer destinationFile.Close()
-
-    // copia dello stream di byte dal file caricato al file di destinazione
-    if _, err := io.Copy(destinationFile, file); err != nil 
-    {
-        rt.sendError(w, http.StatusInternalServerError, 500, "Errore durante la scrittura del file")
-        return
-    }
-	
-    // passaggio dei byte o l'url al DB
-    photoURL := fmt.Sprintf("https://example.com/images/%s", filename)
-
-	// chiamata al database per aggiornare la foto
-	updatedUser, err := rt.db.SetProfilePhoto(userId, photoURL)
-	// in caso di errore nel database
+	// creazione del file sul disco
+	dst, err := os.Create(fullPath)
 	if err != nil 
 	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore interno durante l'aggiornamento foto")
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione file")
+		return
+	}
+	defer dst.Close()
+
+	// copia del contenuto
+	if _, err := io.Copy(dst, file); err != nil 
+	{
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore salvataggio file")
 		return
 	}
 
-	// conversione della struct database 
-	response := User{
-		Id:           &updatedUser.ID,
-		Username:     &updatedUser.Username,
-		ProfilePhoto: &updatedUser.ProfilePhoto,
+	// chiamata al database per aggiornare la foto profilo
+	photoURL := "/images/" + filename
+	user, err := rt.db.SetProfilePhoto(userId, photoURL)
+	if err != nil 
+	{
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore DB")
+		return
 	}
 
-	// ritorno del successo
+	// risposta con il nuovo profilo utente
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(user)
 }
