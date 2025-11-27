@@ -1,14 +1,12 @@
 package database
 
-import 
-(
+import (
 	"database/sql"
 	"errors"
 )
 
 // GetConversations restituisce la lista delle chat
-func (db *appdbimpl) GetConversations(userId int) ([]ChatListItem, error) 
-{
+func (db *appdbimpl) GetConversations(userId int) ([]ChatListItem, error) {
 
 	var chats []ChatListItem
 
@@ -30,40 +28,35 @@ func (db *appdbimpl) GetConversations(userId int) ([]ChatListItem, error)
 	// esecuzione della query
 	rows, err := db.c.Query(query, userId)
 	// in caso di errore
-	if err != nil 
-	{
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	// iterazione sui risultati
-	for rows.Next() 
-	{
+	for rows.Next() {
 		var c ChatListItem
-		c.SnippetIcon = ""  // default vuoto
-		
+		c.SnippetIcon = "" // default vuoto
+
 		// scan dei valori nelle variabili
-		if err := rows.Scan(&c.Id, &c.IsGroup, &c.PhotoChat, &c.LastMessage, &c.SnippetText); err != nil 
-		{
+		if err := rows.Scan(&c.Id, &c.IsGroup, &c.PhotoChat, &c.LastMessage, &c.SnippetText); err != nil {
 			continue // salta righe con errori di scan
 		}
 		chats = append(chats, c) //
 	}
-	
+
 	return chats, nil
 }
 
 // GetChatWithUser cerca una chat privata con un altro utente
-func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatListItem, error) 
-{
+func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatListItem, error) {
 
 	var chats []ChatListItem
-	
-	// ottengiene l'ID dell'altro utente 
+
+	// ottengiene l'ID dell'altro utente
 	var targetId int
 	err := db.c.QueryRow("SELECT id FROM users WHERE username = ?", targetUsername).Scan(&targetId)
-	if err != nil 
-	{
+	if err != nil {
 		return chats, nil // utente non trovato -> lista vuota
 	}
 
@@ -78,8 +71,7 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 	// esecuzione della query
 	rows, err := db.c.Query(query, userId, targetId)
 	// in caso di errore
-	if err != nil 
-	{
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
@@ -89,8 +81,7 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 		var c ChatListItem
 		c.SnippetText = ""
 		// scan dei valori nelle variabili
-		if err := rows.Scan(&c.Id, &c.IsGroup, &c.PhotoChat); err != nil 
-		{
+		if err := rows.Scan(&c.Id, &c.IsGroup, &c.PhotoChat); err != nil {
 			return nil, err
 		}
 		chats = append(chats, c)
@@ -100,18 +91,14 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 }
 
 // GetChatMessages restituisce i messaggi di una chat
-func (db *appdbimpl) GetChatMessages(chatId int, userId int) ([]Message, error) 
-{
+func (db *appdbimpl) GetChatMessages(chatId int, userId int) ([]Message, error) {
 
 	// controlla se l'utente è membro della chat
 	var exists int
 	err := db.c.QueryRow("SELECT 1 FROM members WHERE chat_id = ? AND user_id = ?", chatId, userId).Scan(&exists)
-	if err == sql.ErrNoRows 
-	{
-		return nil, errors.New("Chat non trovata o accesso negato")
-	} 
-	else if err != nil 
-	{
+	if err == sql.ErrNoRows {
+		return nil, errors.New("chat non trovata o accesso negato")
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -132,12 +119,10 @@ func (db *appdbimpl) GetChatMessages(chatId int, userId int) ([]Message, error)
 
 	// iterazione sui risultati
 	var messages []Message
-	for rows.Next() 
-	{
+	for rows.Next() {
 		var m Message
 		// scan dei valori nelle variabili
-		if err := rows.Scan(&m.Id, &m.Text, &m.SentAt, &m.SentBy, &m.PhotoUrl); err != nil 
-		{
+		if err := rows.Scan(&m.Id, &m.Text, &m.SentAt, &m.SentBy, &m.PhotoUrl); err != nil {
 			return nil, err
 		}
 		m.Checkmark = true // tutti i messaggi sono considerati letti

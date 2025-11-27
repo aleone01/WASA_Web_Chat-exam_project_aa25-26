@@ -1,24 +1,22 @@
 package database
 
-import 
-(
+import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // strutture dati usate nelle API
 // User rappresenta un utente del sistema
-type User struct 
-{
+type User struct {
 	Id           int    `json:"id"`
 	Username     string `json:"username"`
 	ProfilePhoto string `json:"profilePhoto"`
 }
 
 // ChatListItem rappresenta un elemento della lista delle chat
-type ChatListItem struct 
-{
+type ChatListItem struct {
 	Id          int       `json:"id"`
 	IsGroup     bool      `json:"isGroup"`
 	PhotoChat   string    `json:"photoChat"`
@@ -28,10 +26,9 @@ type ChatListItem struct
 }
 
 // Message rappresenta un messaggio in una chat
-type Message struct 
-{
+type Message struct {
 	Id        int       `json:"id"`
-	ChatId    int       `json:"-"` 
+	ChatId    int       `json:"-"`
 	Text      string    `json:"text"`
 	SentAt    time.Time `json:"sentAt"`
 	SentBy    int       `json:"sentBy"`
@@ -40,19 +37,16 @@ type Message struct
 }
 
 // Group rappresenta un gruppo di chat
-type Group struct 
-{
+type Group struct {
 	Id          int    `json:"id"`
 	GroupName   string `json:"groupname"`
 	GroupPhoto  string `json:"groupPhoto"`
 	MembersList []int  `json:"membersList"`
 }
 
-
 // AppDatabase is the high level interface for the DB
 // Qui definiamo i metodi che il resto dell'applicazione potrà chiamare.
-type AppDatabase interface 
-{
+type AppDatabase interface {
 	Ping() error
 
 	// CheckToken verifica se il token di sessione è valido e restituisce l'userId associato
@@ -82,57 +76,52 @@ type AppDatabase interface
 	// AddReaction aggiunge un'emoticon a un messaggio
 	AddReaction(messageId int, userId int, emoticon string) error
 
-	// RemoveReaction rimuove la reazione dell'utente da un messaggio 
+	// RemoveReaction rimuove la reazione dell'utente da un messaggio
 	RemoveReaction(messageId int, userId int) error
 
 	// DeleteMessage elimina un messaggio (solo se l'utente ne è il proprietario)
 	DeleteMessage(messageId int, userId int) error
 
-	// GetMessage recupera un messaggio dal suo ID 
+	// GetMessage recupera un messaggio dal suo ID
 	GetMessage(messageId int) (Message, error)
 
 	// CreateGroup crea un nuovo gruppo con i membri specificati
 	CreateGroup(name string, photo string, members []int, creatorId int) (Group, error)
 
 	// AddGroupMembers aggiunge nuovi membri a un gruppo esistente
-    AddGroupMembers(groupId int, newMembers []int) (Group, error)
+	AddGroupMembers(groupId int, newMembers []int) (Group, error)
 
 	// LeaveGroup rimuove un utente (se stesso) dal gruppo
-    LeaveGroup(groupId int, userId int) error
+	LeaveGroup(groupId int, userId int) error
 
 	// SetGroupName aggiorna il nome del gruppo
-    SetGroupName(groupId int, newName string) (Group, error)
+	SetGroupName(groupId int, newName string) (Group, error)
 
 	// SetGroupPhoto aggiorna la foto del gruppo
-    SetGroupPhoto(groupId int, photoURL string) (Group, error)
+	SetGroupPhoto(groupId int, photoURL string) (Group, error)
 
 	// CheckGroupMembership verifica se un utente è membro di un gruppo
-    CheckGroupMembership(groupId int, userId int) (bool, error)
+	CheckGroupMembership(groupId int, userId int) (bool, error)
 
 	// GetGroupById recupera un gruppo dal suo ID
-    GetGroupById(groupId int) (Group, error)
-
+	GetGroupById(groupId int) (Group, error)
 }
 
 // appdbimpl è l'implementazione concreta di AppDatabase
-type appdbimpl struct 
-{
+type appdbimpl struct {
 	c *sql.DB
 }
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
 // `db` is required - an error will be returned if `db` is `nil`.
-func New(db *sql.DB) (AppDatabase, error) 
-{
+func New(db *sql.DB) (AppDatabase, error) {
 	// controllo che il db non sia nil
-	if db == nil 
-	{
+	if db == nil {
 		return nil, errors.New("database is required when building a AppDatabase")
 	}
 
-	// abilita le Foreign Keys 
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil 
-	{
+	// abilita le Foreign Keys
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
 	}
 
@@ -194,20 +183,17 @@ func New(db *sql.DB) (AppDatabase, error)
 	`
 
 	// esecuzione creazione tabelle
-	if _, err := db.Exec(schema); err != nil 
-	{
+	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("error creating database structure: %w", err)
 	}
 
 	// restituisce l'istanza di appdbimpl
-	return &appdbimpl
-	{
+	return &appdbimpl{
 		c: db,
 	}, nil
 }
 
 // Ping verifica la connessione al database
-func (db *appdbimpl) Ping() error 
-{
+func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
 }

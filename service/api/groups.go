@@ -1,215 +1,224 @@
 package api
 
-import 
-(
-	"github.com/aleone01/Web-Project-repo/service/globaltime"
+import (
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+
+	"github.com/aleone01/Web-Project-repo/service/api/reqcontext"
+	"github.com/aleone01/Web-Project-repo/service/globaltime"
+	"github.com/julienschmidt/httprouter"
 )
 
-// CreateGroup crea un nuovo gruppo (POST /groups)
-func (rt *Router) CreateGroup(w http.ResponseWriter, r *http.Request, userId int) 
-{
-	if err := rt.checkAuth(w, r, userId); err != nil 
-	{
+// createGroup gestisce la creazione di un nuovo gruppo
+func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
+	// Auth manuale semplificata (recupera user dal token)
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+
+	userId, err := rt.db.CheckToken(token)
+	if err != nil {
+		rt.sendError(w, http.StatusUnauthorized, 401, "Login richiesto")
 		return
 	}
 
-	// Parsing JSON body 
-	var reqBody struct 
-	{
+	// parsing del body della richiesta
+	var reqBody struct {
 		Name    string `json:"name"`
-		Photo   string `json:"photo"` // YAML dice string binary, qui assumiamo URL o base64 string
+		Photo   string `json:"photo"`
 		Members []int  `json:"members"`
 	}
 
-	// Decodifica JSON 
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil 
-	{
+	// creazione del gruppo nel database
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	// controllo campi obbligatori
-	if len(reqBody.Name) == 0 || len(reqBody.Members) == 0 
-	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Nome e Membri richiesti")
+	g, err := rt.db.CreateGroup(reqBody.Name, reqBody.Photo, reqBody.Members, userId)
+	if err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione")
 		return
 	}
 
-	// chiamata al database per creare il gruppo
-	group, err := rt.db.CreateGroup(reqBody.Name, reqBody.Photo, reqBody.Members, userId)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione gruppo")
-		return
-	}
-
-	// risposta JSON con il gruppo creato e messsaggio di successo
+	// risposta con i dati del gruppo creato
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(group)
-
+	_ = json.NewEncoder(w).Encode(g)
 }
 
-// AddToGroup aggiunge membri a un gruppo esistente (POST /groups/{groupId}/members)
-func (rt *Router) AddToGroup(w http.ResponseWriter, r *http.Request, userId int, groupId int) 
-{
+// addToGroup gestisce l'aggiunta di membri a un gruppo
+func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// Check Auth
-	if err := rt.checkAuth(w, r, userId); err != nil { return }
+	// estrazione groupId dai parametri della rotta
+	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 
-	// verifica che l'utente sia membro del gruppo
+	// Auth manuale semplificata (recupera user dal token)
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+	userId, _ := rt.db.CheckToken(token)
+
+	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
-	if !isMember 
-	{
-		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro del gruppo")
+	if !isMember {
+		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro")
 		return
 	}
 
-	// parsing body JSON
-	var reqBody struct 
-	{
+	// parsing del body della richiesta
+	var reqBody struct {
 		Members []int `json:"members"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil 
-	{
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	// chiamata al database per aggiungere i membri
-	updatedGroup, err := rt.db.AddGroupMembers(groupId, reqBody.Members)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore aggiunta membri")
-		return
-	}
-
-	// risposta con il gruppo aggiornato e messaggio di successo
+	// aggiunta dei membri al gruppo nel database
+	g, _ := rt.db.AddGroupMembers(groupId, reqBody.Members)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedGroup)
+	_ = json.NewEncoder(w).Encode(g)
 }
 
-// LeaveGroup abbandona il gruppo (DELETE /groups/{groupId}/leave)
-func (rt *Router) LeaveGroup(w http.ResponseWriter, r *http.Request, userId int, groupId int) 
-{
+// leaveGroup gestisce l'uscita di un utente da un gruppo
+func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// Check Auth
-	if err := rt.checkAuth(w, r, userId); err != nil { return }
+	// estrazione groupId dai parametri della rotta
+	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
+	token := r.Header.Get("Authorization")
 
-	// chiamata al database per lasciare il gruppo
-	err := rt.db.LeaveGroup(groupId, userId)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore durante l'uscita (o non eri membro)")
+	// Auth manuale semplificata (recupera user dal token)
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+	userId, _ := rt.db.CheckToken(token)
+
+	// rimozione dell'utente dal gruppo nel database
+	if err := rt.db.LeaveGroup(groupId, userId); err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore")
 		return
 	}
 
-	// risposta con successo
+	// risposta di successo senza contenuto
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetGroupName cambia il nome del gruppo (PUT /groups/{groupId}/name)
-func (rt *Router) SetGroupName(w http.ResponseWriter, r *http.Request, userId int, groupId int) 
-{
-	// Check Auth
-	if err := rt.checkAuth(w, r, userId); err != nil { return }
+// setGroupName gestisce l'aggiornamento del nome del gruppo
+func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// verifica che l'utente sia membro del gruppo
+	// estrazione groupId dai parametri della rotta
+	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
+
+	// Auth manuale semplificata (recupera user dal token)
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+	userId, _ := rt.db.CheckToken(token)
+
+	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
-	if !isMember 
-	{
-		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro del gruppo")
+	if !isMember {
+		rt.sendError(w, http.StatusForbidden, 403, "Accesso negato")
 		return
 	}
 
-	// parsing body JSON
+	// parsing del body della richiesta
 	var reqBody struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil 
-	{
+
+	// aggiornamento del nome del gruppo nel database
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
+	g, _ := rt.db.SetGroupName(groupId, reqBody.Name)
 
-	// chiamata al database per aggiornare il nome
-	group, err := rt.db.SetGroupName(groupId, reqBody.Name)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore aggiornamento nome")
-		return
-	}
-
-	// risposta con il gruppo aggiornato e messaggio di successo
+	// risposta con i dati aggiornati del gruppo
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(group)
+	// CORREZIONE: Assegnato a _
+	_ = json.NewEncoder(w).Encode(g)
 }
 
-// SetGroupPhoto aggiorna la foto del gruppo (PUT /groups/{groupId}/photo)
-func (rt *Router) SetGroupPhoto(w http.ResponseWriter, r *http.Request, userId int, groupId int) 
-{
+// setGroupPhoto gestisce l'aggiornamento della foto del gruppo
+func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// Check Auth
-	if err := rt.checkAuth(w, r, userId); err != nil { return }
+	// estrazione groupId dai parametri della rotta
+	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 
-	// verifica che l'utente sia membro del gruppo
+	// Auth manuale semplificata (recupera user dal token)
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+	userId, _ := rt.db.CheckToken(token)
+
+	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
-	if !isMember 
-	{
-		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro del gruppo")
+	if !isMember {
+		rt.sendError(w, http.StatusForbidden, 403, "Accesso negato")
 		return
 	}
 
-	// Parsing Multipart form
-	if err := r.ParseMultipartForm(10 << 20); err != nil 
-	{
-		rt.sendError(w, http.StatusBadRequest, 400, "Errore form dati")
+	// parsing del form multipart per l'immagine
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "Errore form")
 		return
 	}
 
-	// estrazione del file
-	file, fileHeader, err := r.FormFile("image") // 'image' da YAML
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusBadRequest, 400, "File 'image' mancante")
+	file, fileHeader, err := r.FormFile("image")
+	if err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "File mancante")
 		return
 	}
 	defer file.Close()
 
-	// salvataggio su disco 
-	storagePath := "./images"
-	os.MkdirAll(storagePath, 0755)
-
-	// creazione nome file unico
+	// salvataggio del file immagine
 	filename := fmt.Sprintf("g%d_%d%s", groupId, globaltime.Now().Unix(), filepath.Ext(fileHeader.Filename))
-	fullPath := filepath.Join(storagePath, filename)
 
-	// creazione file su disco
-	dst, err := os.Create(fullPath)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore server")
+	// Creazione directory se non esiste
+	if err := os.MkdirAll("./images", 0755); err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore filesystem")
+		return
+	}
+
+	path := filepath.Join("./images", filename)
+
+	dst, err := os.Create(path)
+	if err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore salvataggio")
 		return
 	}
 	defer dst.Close()
-	io.Copy(dst, file)
 
-	// URL relativo per il DB 
-	photoURL := "/images/" + filename
-	group, err := rt.db.SetGroupPhoto(groupId, photoURL)
-	if err != nil 
-	{
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore DB")
+	// copia del contenuto del file caricato
+	if _, err := io.Copy(dst, file); err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore scrittura file")
 		return
 	}
 
-	// risposta con il gruppo aggiornato e messaggio di successo
+	// aggiornamento della foto del gruppo nel database
+	g, _ := rt.db.SetGroupPhoto(groupId, "/images/"+filename)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(group)
+	_ = json.NewEncoder(w).Encode(g)
 }

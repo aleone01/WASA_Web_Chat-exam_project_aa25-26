@@ -1,96 +1,78 @@
-/*
-Package api exposes the main API engine. All HTTP APIs are handled here - so-called "business logic" should be here, or
-in a dedicated package (if that logic is complex enough).
-
-To use this package, you should create a new instance with New() passing a valid Config. The resulting Router will have
-the Router.Handler() function that returns a handler that can be used in a http.Server (or in other middlewares).
-
-Example:
-
-	// Create the API router
-	apirouter, err := api.New(api.Config{
-		Logger:   logger,
-		Database: appdb,
-	})
-	if err != nil {
-		logger.WithError(err).Error("error creating the API server instance")
-		return fmt.Errorf("error creating the API server instance: %w", err)
-	}
-	router := apirouter.Handler()
-
-	// ... other stuff here, like middleware chaining, etc.
-
-	// Create the API server
-	apiserver := http.Server{
-		Addr:              cfg.Web.APIHost,
-		Handler:           router,
-		ReadTimeout:       cfg.Web.ReadTimeout,
-		ReadHeaderTimeout: cfg.Web.ReadTimeout,
-		WriteTimeout:      cfg.Web.WriteTimeout,
-	}
-
-	// Start the service listening for requests in a separate goroutine
-	apiserver.ListenAndServe()
-
-See the `main.go` file inside the `cmd/webapi` for a full usage example.
-*/
 package api
 
 import (
-	"errors"
+	"encoding/json"
+	"net/http"
+
 	"github.com/aleone01/Web-Project-repo/service/database"
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
-	"net/http"
 )
 
-// Config is used to provide dependencies and configuration to the New function.
-type Config struct {
-	// Logger where log entries are sent
-	Logger logrus.FieldLogger
+// _router è l'implementazione interna del router API.
+// Questa struct sostituisce l'interfaccia Router che causava errori "undefined".
+type _router struct {
+	router     *httprouter.Router
+	db         database.AppDatabase
+	baseLogger *logrus.Logger
+}
 
-	// Database is the instance of database.AppDatabase where data are saved
+// Config è la struttura di configurazione per creare una nuova API
+type Config struct {
+	Logger   *logrus.Logger
 	Database database.AppDatabase
 }
 
-// Router is the package API interface representing an API handler builder
-type Router interface {
-	// Handler returns an HTTP handler for APIs provided in this package
-	Handler() http.Handler
-
-	// Close terminates any resource used in the package
-	Close() error
-}
-
-// New returns a new Router instance
-func New(cfg Config) (Router, error) {
-	// Check if the configuration is correct
-	if cfg.Logger == nil {
-		return nil, errors.New("logger is required")
-	}
-	if cfg.Database == nil {
-		return nil, errors.New("database is required")
-	}
-
-	// Create a new router where we will register HTTP endpoints. The server will pass requests to this router to be
-	// handled.
-	router := httprouter.New()
-	router.RedirectTrailingSlash = false
-	router.RedirectFixedPath = false
-
-	return &_router{
-		router:     router,
-		baseLogger: cfg.Logger,
+// New crea e restituisce un nuovo http.Handler (l'API pronta all'uso).
+func New(cfg Config) (http.Handler, error) {
+	// Inizializza la struct privata _router
+	rt := &_router{
+		router:     httprouter.New(),
 		db:         cfg.Database,
-	}, nil
+		baseLogger: cfg.Logger,
+	}
+
+	// Chiama Handler() (che si trova in api-handler.go) per registrare tutte le rotte
+	return rt.Handler(), nil
 }
 
-type _router struct {
-	router *httprouter.Router
+// checkAuth controlla se il token nell'header è valido e corrisponde all'userId richiesto
+func (rt *_router) checkAuth(w http.ResponseWriter, r *http.Request, requiredUserId int) bool {
+	// estrazione token
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
 
-	// baseLogger is a logger for non-requests contexts, like goroutines or background tasks not started by a request.
-	// Use context logger if available (e.g., in requests) instead of this logger.
-	baseLogger logrus.FieldLogger
+	// verifica database
+	userIdFromToken, err := rt.db.CheckToken(token)
+	if err != nil {
+		rt.sendError(w, http.StatusUnauthorized, 401, "Token non valido o utente non trovato")
+		return false
+	}
 
-	db database.AppDatabase
+	// verifica Identità
+	if userIdFromToken != requiredUserId {
+		rt.sendError(w, http.StatusForbidden, 403, "Accesso negato alla risorsa richiesta")
+		return false
+	}
+
+	return true
+}
+
+// sendError è l'helper per le risposte JSON di errore
+func (rt *_router) sendError(w http.ResponseWriter, status int, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	// invio risposta JSON
+	_ = json.NewEncoder(w).Encode(struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}{
+		Code:    code,
+		Message: message,
+	})
 }
