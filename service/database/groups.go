@@ -109,7 +109,7 @@ func (db *appdbimpl) CheckGroupMembership(groupId int, userId int) (bool, error)
 	// esecuzione SELECT
 	var exists int
 	err := db.c.QueryRow("SELECT 1 FROM members WHERE chat_id = ? AND user_id = ?", groupId, userId).Scan(&exists)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	return true, err
@@ -142,6 +142,10 @@ func (db *appdbimpl) GetGroupById(groupId int) (Group, error) {
 			return g, err
 		}
 		g.MembersList = append(g.MembersList, uid)
+	}
+
+	if err := rows.Err(); err != nil {
+		return g, err
 	}
 
 	// ritorna il gruppo completo

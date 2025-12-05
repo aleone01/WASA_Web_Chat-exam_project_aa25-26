@@ -42,7 +42,11 @@ func (db *appdbimpl) GetConversations(userId int) ([]ChatListItem, error) {
 		if err := rows.Scan(&c.Id, &c.IsGroup, &c.PhotoChat, &c.LastMessage, &c.SnippetText); err != nil {
 			continue // salta righe con errori di scan
 		}
-		chats = append(chats, c) //
+		chats = append(chats, c) // aggiunge alla lista
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return chats, nil
@@ -87,6 +91,10 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 		chats = append(chats, c)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return chats, nil
 }
 
@@ -96,7 +104,7 @@ func (db *appdbimpl) GetChatMessages(chatId int, userId int) ([]Message, error) 
 	// controlla se l'utente è membro della chat
 	var exists int
 	err := db.c.QueryRow("SELECT 1 FROM members WHERE chat_id = ? AND user_id = ?", chatId, userId).Scan(&exists)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("chat non trovata o accesso negato")
 	} else if err != nil {
 		return nil, err
@@ -127,6 +135,10 @@ func (db *appdbimpl) GetChatMessages(chatId int, userId int) ([]Message, error) 
 		}
 		m.Checkmark = true // tutti i messaggi sono considerati letti
 		messages = append(messages, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return messages, nil

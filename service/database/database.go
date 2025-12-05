@@ -128,7 +128,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// tabelle sqlite create sulla base degli schemas di api.yaml
 	var schema = `
 
-	// tabella utenti
 	CREATE TABLE IF NOT EXISTS users 
 	(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,7 +135,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		profile_photo TEXT
 	);
 
-	// tabella chat
 	CREATE TABLE IF NOT EXISTS chats 
 	(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,7 +143,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		group_photo TEXT
 	);
 
-	// tabella membri delle chat
 	CREATE TABLE IF NOT EXISTS members 
 	(
 		chat_id INTEGER NOT NULL,
@@ -155,7 +152,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 
-	// tabella messaggi
 	CREATE TABLE IF NOT EXISTS messages 
 	(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,7 +166,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		FOREIGN KEY (reply_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
 	);
 
-	// tabella reazioni ai messaggi
 	CREATE TABLE IF NOT EXISTS reactions 
 	(
 		message_id INTEGER NOT NULL,
