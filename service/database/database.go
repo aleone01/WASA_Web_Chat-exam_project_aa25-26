@@ -71,7 +71,7 @@ type AppDatabase interface {
 	GetChatMessages(chatId int, userId int) ([]Message, error)
 
 	// CreateMessage crea un nuovo messaggio in una chat
-	CreateMessage(chatId int, userId int, text string, photoUrl string) (Message, error)
+	CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time) (Message, error)
 
 	// AddReaction aggiunge un'emoticon a un messaggio
 	AddReaction(messageId int, userId int, emoticon string) error

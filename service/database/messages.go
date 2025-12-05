@@ -6,13 +6,13 @@ import (
 )
 
 // CreateMessage inserisce un nuovo messaggio nel database
-func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl string) (Message, error) {
+func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time) (Message, error) {
 	var m Message
 	m.ChatId = chatId
 	m.SentBy = userId
 	m.Text = text
 	m.PhotoUrl = photoUrl
-	m.SentAt = time.Now()
+	m.SentAt = sentAt
 	m.Checkmark = true
 
 	// Esecuzione INSERT

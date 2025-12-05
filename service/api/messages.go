@@ -2,71 +2,49 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/aleone01/Web-Project-repo/service/api/reqcontext"
-	"github.com/aleone01/Web-Project-repo/service/globaltime"
 	"github.com/julienschmidt/httprouter"
 )
 
 // sendMessage invia un nuovo messaggio
 func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// Estrazione parametri da URL
+	// estrazione userId e chatId dai parametri della rotta
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
 	chatId, _ := strconv.Atoi(ps.ByName("chatId"))
 
-	// Check Auth
+	// Check autenticazione
 	if !rt.checkAuth(w, r, userId) {
 		return
 	}
 
-	// Parsing Multipart
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		rt.sendError(w, http.StatusBadRequest, 400, "Errore nel parsing del messaggio")
+	// Parsing JSON
+	var reqBody struct {
+		Text  string `json:"text"`
+		Photo string `json:"photo"` // URL opzionale
+	}
+
+	// Decodifica JSON
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	text := r.FormValue("text")
-	var photoUrl string
+	// Imposta il timestamp di invio
+	sentAt := time.Now()
 
-	file, fileHeader, err := r.FormFile("photo")
-	if err == nil {
-		defer file.Close()
-
-		storagePath := "./images"
-		// Ignoriamo l'errore di MkdirAll se la cartella esiste già
-		_ = os.MkdirAll(storagePath, 0755)
-
-		filename := fmt.Sprintf("msg_%d_%d%s", userId, globaltime.Now().Unix(), filepath.Ext(fileHeader.Filename))
-		fullPath := filepath.Join(storagePath, filename)
-
-		dst, err := os.Create(fullPath)
-		if err != nil {
-			rt.sendError(w, http.StatusInternalServerError, 500, "Errore salvataggio file")
-			return
-		}
-		defer dst.Close()
-
-		if _, err := io.Copy(dst, file); err != nil {
-			rt.sendError(w, http.StatusInternalServerError, 500, "Errore scrittura file")
-			return
-		}
-
-		photoUrl = "/images/" + filename
-	}
-
-	msg, err := rt.db.CreateMessage(chatId, userId, text, photoUrl)
+	// Creazione del messaggio nel database
+	msg, err := rt.db.CreateMessage(chatId, userId, reqBody.Text, reqBody.Photo, sentAt)
 	if err != nil {
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore nel salvataggio del messaggio")
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore nel salvataggio")
 		return
 	}
 
+	// Risposta con il messaggio creato
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(msg)
@@ -141,32 +119,43 @@ func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps http
 // forwardMessage inoltra un messaggio
 func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
+	// estrazione userId e messageId dai parametri della rotta
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
 	messageId, _ := strconv.Atoi(ps.ByName("messageId"))
 
+	// Check autenticazione
 	if !rt.checkAuth(w, r, userId) {
 		return
 	}
 
+	// Parsing JSON
 	var reqBody struct {
 		Targets []int `json:"targets"`
 	}
+
+	// Decodifica JSON
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
+	// Recupera il messaggio originale
 	originalMsg, err := rt.db.GetMessage(messageId)
 	if err != nil {
 		rt.sendError(w, http.StatusNotFound, 404, "Messaggio originale non trovato")
 		return
 	}
 
-	for _, targetChatId := range reqBody.Targets {
-		// Ignoriamo errori sui singoli invii per semplicità, ma logghiamo se possibile
-		_, _ = rt.db.CreateMessage(targetChatId, userId, originalMsg.Text, originalMsg.PhotoUrl)
+	// Imposta il timestamp di inoltro
+	forwardTime := time.Now()
+
+	// Inoltra il messaggio a ciascun target
+	for _, tid := range reqBody.Targets {
+		_, _ = rt.db.CreateMessage(tid, userId, originalMsg.Text, originalMsg.PhotoUrl, forwardTime)
 	}
 
+	// Risposta con il messaggio originale inoltrato
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(originalMsg)
+
 }

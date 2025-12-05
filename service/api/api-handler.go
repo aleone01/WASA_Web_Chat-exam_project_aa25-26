@@ -6,6 +6,7 @@ import (
 
 // Handler restituisce l'istanza di httprouter con tutte le rotte registrate
 func (rt *_router) Handler() http.Handler {
+
 	// rotta di liveness
 	rt.router.GET("/liveness", rt.liveness) // Definito nel tuo liveness.go
 

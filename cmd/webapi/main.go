@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"os"
 
 	"github.com/aleone01/Web-Project-repo/service/api"
 	"github.com/aleone01/Web-Project-repo/service/database"
@@ -14,15 +13,14 @@ import (
 )
 
 func main() {
-
-	// configura logger
+	// Inizializzazione Logger
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.TextFormatter{
 		ForceColors:   true,
 		FullTimestamp: true,
 	})
 
-	// connessione al database SQLite
+	// Apertura Connessione Database
 	dbPath := "./wasatext.db"
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -30,14 +28,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// inizializza tabelle database
+	// Inizializzazione Tabelle
 	appDB, err := database.New(db)
 	if err != nil {
 		logger.WithError(err).Fatal("Errore inizializzazione tabelle database")
 	}
 	logger.Info("Database connesso e inizializzato correttamente")
 
-	// crea API handler
+	// Inizializzazione API Router
 	apiHandler, err := api.New(api.Config{
 		Logger:   logger,
 		Database: appDB,
@@ -46,26 +44,19 @@ func main() {
 		logger.WithError(err).Fatal("Errore creazione API Handler")
 	}
 
-	// crea cartella per immagini se non esiste
-	imagesDir := "./images"
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
-		logger.WithError(err).Fatal("Impossibile creare cartella images")
-	}
-
-	// crea router principale
+	// Configurazione Router
 	mux := http.NewServeMux()
-	fs := http.FileServer(http.Dir(imagesDir))
-	mux.Handle("/images/", http.StripPrefix("/images/", fs))
+
+	// Registrazione Handler API
 	mux.Handle("/", apiHandler)
 
-	// applica CORS a tutti gli handler
+	// Applicazione CORS
 	globalHandler := applyCORSHandler(mux)
 
-	// avvio server HTTP
+	// Avvio Server
 	serverPort := ":3000"
-	logger.Infof("Server API avviato sulla porta %s", serverPort)
+	logger.Infof("Server API in ascolto su http://localhost%s", serverPort)
 
-	// avvio server
 	if err := http.ListenAndServe(serverPort, globalHandler); err != nil {
 		if !errors.Is(err, http.ErrServerClosed) {
 			logger.WithError(err).Fatal("Errore imprevisto del server HTTP")
