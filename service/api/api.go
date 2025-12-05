@@ -9,6 +9,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Router è l'interfaccia che il main.go si aspetta.
+// Definisce i metodi che la nostra struct _router deve avere.
+type Router interface {
+	Handler() http.Handler
+	Close() error
+}
+
 // _router è l'implementazione interna del router API.
 // Questa struct sostituisce l'interfaccia Router che causava errori "undefined".
 type _router struct {
@@ -23,17 +30,15 @@ type Config struct {
 	Database database.AppDatabase
 }
 
-// New crea e restituisce un nuovo http.Handler (l'API pronta all'uso).
-func New(cfg Config) (http.Handler, error) {
-	// Inizializza la struct privata _router
+// New crea un nuovo router API con la configurazione specificata
+func New(cfg Config) (Router, error) {
 	rt := &_router{
 		router:     httprouter.New(),
 		db:         cfg.Database,
 		baseLogger: cfg.Logger,
 	}
 
-	// Chiama Handler() (che si trova in api-handler.go) per registrare tutte le rotte
-	return rt.Handler(), nil
+	return rt, nil
 }
 
 // checkAuth controlla se il token nell'header è valido e corrisponde all'userId richiesto
