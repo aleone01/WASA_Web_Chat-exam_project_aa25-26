@@ -62,51 +62,51 @@ export default {
 </script>
 
 <template>
-    <div class="container mt-4">
-        <h2 class="mb-4" style="color: #249EA0;">Il mio Profilo</h2>
+  <div class="container mt-4">
+    <h2 class="mb-4" style="color: #249EA0;">Il mio Profilo</h2>
 
-        <div v-if="error" class="alert alert-danger" style="background-color: #3e1a1a; border-color: #FD5901; color: #ffbaba;">{{ error }}</div>
-        <div v-if="msg" class="alert alert-success" style="background-color: #1a3e3e; border-color: #249EA0; color: #aaffff;">{{ msg }}</div>
+    <div v-if="error" class="alert alert-danger" style="background-color: #3e1a1a; border-color: #FD5901; color: #ffbaba;">{{ error }}</div>
+    <div v-if="msg" class="alert alert-success" style="background-color: #1a3e3e; border-color: #249EA0; color: #aaffff;">{{ msg }}</div>
 
-        <div class="row">
-            <div class="col-md-6 mb-3">
-                <div class="card shadow-sm dark-card">
-                    <div class="card-header text-white" style="background-color: #005F60;">
-                        Cambia Username
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label class="form-label text-light">Nuovo Username</label>
-                            <input v-model="username" type="text" class="form-control dark-input" placeholder="Min 3, Max 16 caratteri" minlength="3" maxlength="16">
-                        </div>
-                        <button @click="updateUsername" class="btn btn-teal" :disabled="loading">
-                            {{ loading ? 'Attendi...' : 'Aggiorna Username' }}
-                        </button>
-                    </div>
-                </div>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <div class="card shadow-sm dark-card">
+          <div class="card-header text-white" style="background-color: #005F60;">
+            Cambia Username
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label text-light">Nuovo Username</label>
+              <input v-model="username" type="text" class="form-control dark-input" placeholder="Min 3, Max 16 caratteri" minlength="3" maxlength="16">
             </div>
-
-            <div class="col-md-6 mb-3">
-                <div class="card shadow-sm dark-card">
-                    <div class="card-header text-white" style="background-color: #FD5901;">
-                        Cambia Foto Profilo
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label class="form-label text-light">URL Nuova Foto</label>
-                            <input v-model="photoUrl" type="url" class="form-control dark-input" placeholder="https://example.com/foto.jpg">
-                        </div>
-                        <div v-if="photoUrl" class="mb-3 text-center">
-                            <img :src="photoUrl" class="rounded-circle border-teal" style="width: 80px; height: 80px; object-fit: cover;" alt="Anteprima">
-                        </div>
-                        <button @click="updatePhoto" class="btn btn-orange" :disabled="loading">
-                            {{ loading ? 'Attendi...' : 'Aggiorna Foto' }}
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <button class="btn btn-teal" :disabled="loading" @click="updateUsername">
+              {{ loading ? 'Attendi...' : 'Aggiorna Username' }}
+            </button>
+          </div>
         </div>
+      </div>
+
+      <div class="col-md-6 mb-3">
+        <div class="card shadow-sm dark-card">
+          <div class="card-header text-white" style="background-color: #FD5901;">
+            Cambia Foto Profilo
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label text-light">URL Nuova Foto</label>
+              <input v-model="photoUrl" type="url" class="form-control dark-input" placeholder="https://example.com/foto.jpg">
+            </div>
+            <div v-if="photoUrl" class="mb-3 text-center">
+              <img :src="photoUrl" class="rounded-circle border-teal" style="width: 80px; height: 80px; object-fit: cover;" alt="Anteprima">
+            </div>
+            <button class="btn btn-orange" :disabled="loading" @click="updatePhoto">
+              {{ loading ? 'Attendi...' : 'Aggiorna Foto' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
 </template>
 
 <style scoped>

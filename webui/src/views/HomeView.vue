@@ -38,6 +38,22 @@ export default {
         // Recupera lo username dell'utente corrente dalla sessione per identificare le proprie reazioni
         myUsername() { return "Me"; }
     },
+    // Lifecycle Hook: all'avvio verifica l'autenticazione, carica i dati iniziali e imposta il polling.
+    mounted() {
+        if (!this.myId) { this.$router.push('/login'); return; }
+        this.refresh();
+        this.refreshInterval = setInterval(() => {
+            // Aggiorniamo anche la lista chat (refresh) per vedere se ci hanno aggiunto a nuovi gruppi
+            this.refresh();
+            if (this.currentChatId) {
+                api.getConversation(this.myId, this.currentChatId).then(res => {
+                    this.messages = res.data.messages || res.data || [];
+                });
+            }
+        }, 3000);
+    },
+    // Lifecycle Hook: pulisce l'intervallo di polling alla distruzione del componente.
+    unmounted() { clearInterval(this.refreshInterval); },
     methods: {
         // Scarica la lista aggiornata delle conversazioni dal server e aggiorna lo stato locale.
         async refresh() {
@@ -298,205 +314,189 @@ export default {
                 this.activeReactionMenuId = msgId;
             }
         }
-    },
-    // Lifecycle Hook: all'avvio verifica l'autenticazione, carica i dati iniziali e imposta il polling.
-    mounted() {
-        if (!this.myId) { this.$router.push('/login'); return; }
-        this.refresh();
-        this.refreshInterval = setInterval(() => {
-            // Aggiorniamo anche la lista chat (refresh) per vedere se ci hanno aggiunto a nuovi gruppi
-            this.refresh();
-            if (this.currentChatId) {
-                api.getConversation(this.myId, this.currentChatId).then(res => {
-                    this.messages = res.data.messages || res.data || [];
-                });
-            }
-        }, 3000);
-    },
-    // Lifecycle Hook: pulisce l'intervallo di polling alla distruzione del componente.
-    unmounted() { clearInterval(this.refreshInterval); }
+    }
 }
 </script>
 
 <template>
-    <div class="container-fluid vh-100 p-0 d-flex flex-column font-sans bg-dark-theme position-relative">
-        
-        <div class="d-flex justify-content-between align-items-center py-2 px-3 border-bottom-dark header-bg" style="flex: 0 0 auto;">
-            <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText</h4>
-            <div class="btn-group">
-                <button class="btn btn-sm btn-teal" @click="startConversation">Nuova Chat</button>
-                <button class="btn btn-sm btn-outline-orange" @click="createGroup">Crea Gruppo</button>
-            </div>
-        </div>
-
-        <div v-if="errormsg" class="alert alert-danger mx-3 mt-2 mb-0 py-2">{{ errormsg }}</div>
-
-        <div class="row g-0 flex-grow-1" style="min-height: 0; overflow: hidden;">
-            
-            <div class="col-md-4 col-lg-3 border-end-dark d-flex flex-column h-100 sidebar-bg">
-                <div class="overflow-auto flex-grow-1">
-                    <ul class="list-group list-group-flush">
-                        <li v-for="chat in chats" :key="chat.id" 
-                            class="list-group-item list-group-item-action cursor-pointer d-flex align-items-center py-3 border-bottom-dark chat-item"
-                            :class="{ 'active-chat': currentChatId === chat.id }"
-                            @click="selectChat(chat.id)">
-                            
-                            <div class="me-3">
-                                <img v-if="chat.photoChat" :src="chat.photoChat" class="rounded-circle border-teal" style="width: 45px; height: 45px; object-fit: cover;">
-                                <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 45px; height: 45px; color: #FAAB36;">
-                                    {{ (chat.name || '?').charAt(0).toUpperCase() }}
-                                </div>
-                            </div>
-                            <div class="flex-grow-1 overflow-hidden">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h6 class="mb-0 text-truncate fw-semibold text-light">{{ chat.name || 'Chat ' + chat.id }}</h6>
-                                    <small class="text-muted" style="font-size: 0.8rem;">{{ formatDate(chat.lastMessage) }}</small>
-                                </div>
-                                <p class="mb-0 small text-truncate text-muted mt-1">{{ chat.snippetText || '...' }}</p>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-
-            <div class="col-md-8 col-lg-9 d-flex flex-column h-100 bg-chat-pattern position-relative">
-                
-                <div v-if="!currentChatId" class="d-flex align-items-center justify-content-center h-100 text-muted">
-                    <h4>Seleziona una chat</h4>
-                </div>
-                
-                <div v-else class="d-flex flex-column h-100 w-100">
-                    
-                    <div class="d-flex align-items-center px-3 py-2 header-bg border-bottom-dark shadow-sm" style="flex: 0 0 auto;">
-                        <img v-if="currentChatPhoto" :src="currentChatPhoto" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
-                        <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold me-2" style="width: 35px; height: 35px; color: #FAAB36;">
-                             {{ (currentChatName || '?').charAt(0).toUpperCase() }}
-                        </div>
-                        <h5 class="m-0 text-light flex-grow-1">{{ currentChatName }}</h5>
-
-                        <button v-if="isCurrentChatGroup" class="btn btn-sm btn-outline-orange ms-2" @click="openGroupInfo" title="Info Gruppo">
-                            ℹ️ Info
-                        </button>
-                    </div>
-
-                    <div class="flex-grow-1 overflow-auto p-3" ref="messageContainer">
-                        <div v-for="msg in messages" :key="msg.id" class="d-flex mb-2 w-100" :class="{ 'justify-content-end': msg.sentBy == myId }">
-                            
-                            <div class="card border-0 shadow-sm msg-bubble position-relative" 
-                                 :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }">
-                                
-                                <div class="card-body p-2">
-                                    
-                                    <div v-if="isCurrentChatGroup && msg.sentBy != myId" class="fw-bold mb-1" style="font-size: 0.75rem; color: #FAAB36;">
-                                        {{ msg.senderName || 'Utente ' + msg.sentBy }}
-                                    </div>
-
-                                    <div v-if="msg.isForward" class="mb-1 fst-italic" style="font-size: 0.75rem; color: #e0e0e0;">
-                                        <span class="me-1">↪</span>Inoltrato
-                                    </div>
-                                    <div v-if="msg.replyTo" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
-                                        <div class="d-flex flex-column">
-                                            <template v-if="getReplySnippet(msg.replyTo).found">
-                                                <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">
-                                                    {{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}
-                                                </small>
-                                                <span class="text-truncate small opacity-75">{{ getReplySnippet(msg.replyTo).text }}</span>
-                                            </template>
-                                            <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
-                                        </div>
-                                    </div>
-                                    <div v-if="msg.photoUrl" class="mb-2"><img :src="msg.photoUrl" class="img-fluid rounded" style="max-height: 300px;"></div>
-                                    <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text }}</p>
-                                    
-                                    <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
-                                        <span v-for="(reaction, idx) in msg.reactions" :key="idx" 
-                                              class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1"
-                                              style="font-size: 0.85rem; cursor: pointer; user-select: none;"
-                                              :title="'Reazione di ' + reaction.username" @click="removeReaction(msg.id)">
-                                            {{ reaction.emoticon }} <span style="font-size: 0.6rem; margin-left: 4px; color: #aaa;">{{ reaction.username }}</span>
-                                        </span>
-                                    </div>
-
-                                    <div class="d-flex justify-content-end align-items-center mt-1 text-nowrap" style="font-size: 0.7rem; opacity: 0.7;">
-                                        <span class="me-2">{{ formatDate(msg.sentAt) }}</span>
-                                        <span v-if="msg.sentBy == myId" class="me-2">
-                                            <span v-if="msg.checkmark" style="color: #FAAB36; font-weight: bold;">✓✓</span>
-                                            <span v-else>✓</span>
-                                        </span>
-                                        <div class="d-flex gap-2 bg-dark rounded px-1 action-buttons position-relative">
-                                            <span @click.stop="toggleReactionMenu(msg.id)" class="cursor-pointer" title="Reagisci">😀</span>
-                                            <span @click.stop="setReply(msg)" class="cursor-pointer" title="Rispondi">↩️</span>
-                                            <span @click.stop="forwardMsg(msg)" class="cursor-pointer" title="Inoltra">➡️</span>
-                                            <span v-if="msg.sentBy == myId" @click.stop="deleteMsg(msg.id)" class="cursor-pointer text-danger" title="Elimina">🗑️</span>
-                                            <div v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" 
-                                                 :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }">
-                                                <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" style="font-size: 1.2rem;" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="input-area border-top-dark p-2" style="flex: 0 0 auto;">
-                        <div v-if="replyingToMsg" class="mb-2 p-2 bg-dark rounded border-start border-4 border-orange d-flex justify-content-between align-items-center">
-                            <div class="overflow-hidden">
-                                <small class="text-orange fw-bold d-block">Rispondendo a:</small>
-                                <small class="text-truncate d-block text-muted">{{ replyingToMsg.text || '📷 Foto' }}</small>
-                            </div>
-                            <button class="btn btn-close btn-close-white btn-sm ms-2" @click="cancelReply"></button>
-                        </div>
-                        <div class="input-group">
-                            <input ref="inputField" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." v-model="newMessageText" @keyup.enter="sendMessage">
-                            <button class="btn btn-teal" @click="sendMessage">➤</button>
-                        </div>
-                        <div class="mt-2">
-                            <input type="url" class="form-control form-control-sm border-0 dark-input-sm" placeholder="URL Immagine (opzionale)" v-model="newPhotoUrl">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div v-if="showGroupInfoModal" class="modal-overlay d-flex align-items-center justify-content-center">
-            <div class="card shadow p-0 modal-content dark-modal" style="width: 400px; max-width: 90%;">
-                <div class="card-header bg-dark-teal text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Gestione Gruppo</h5>
-                    <button class="btn-close btn-close-white" @click="showGroupInfoModal = false"></button>
-                </div>
-                <div class="card-body overflow-auto" style="max-height: 70vh;">
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold text-light">Nome Gruppo</label>
-                        <input v-model="newGroupName" class="form-control dark-input mb-2" placeholder="Nome gruppo">
-                        <label class="form-label fw-bold text-light">Foto Gruppo (URL)</label>
-                        <input v-model="newGroupPhoto" class="form-control dark-input mb-2" placeholder="URL Foto">
-                        <button class="btn btn-sm btn-outline-teal w-100" @click="saveGroupSettings">Salva Modifiche</button>
-                    </div>
-                    <hr class="border-secondary">
-
-                    <h6 class="fw-bold mb-2 text-orange">Membri ({{ groupMembers.length }})</h6>
-                    <ul class="list-group list-group-flush mb-3">
-                        <li v-for="m in groupMembers" :key="m.id" class="list-group-item d-flex align-items-center px-0 bg-transparent text-light border-secondary">
-                            <div class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center me-2 fw-bold" 
-                                 style="width: 32px; height: 32px; font-size: 0.8rem; color: #FAAB36;">
-                                {{ m.profilePhoto ? '' : m.username.charAt(0).toUpperCase() }}
-                                <img v-if="m.profilePhoto" :src="m.profilePhoto" class="rounded-circle w-100 h-100 object-fit-cover">
-                            </div>
-                            <span>{{ m.username }}</span>
-                            <span v-if="m.id === myId" class="badge bg-teal ms-auto">Tu</span>
-                        </li>
-                    </ul>
-                    
-                    <button class="btn btn-sm btn-success w-100 mb-2" @click="addMemberToGroup">Aggiungi Membro</button>
-                    <hr class="border-secondary">
-                    <button class="btn btn-sm btn-danger w-100" @click="leaveGroup">Abbandona Gruppo</button>
-                </div>
-            </div>
-        </div>
-
+  <div class="container-fluid vh-100 p-0 d-flex flex-column font-sans bg-dark-theme position-relative">
+    <div class="d-flex justify-content-between align-items-center py-2 px-3 border-bottom-dark header-bg" style="flex: 0 0 auto;">
+      <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText</h4>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-teal" @click="startConversation">Nuova Chat</button>
+        <button class="btn btn-sm btn-outline-orange" @click="createGroup">Crea Gruppo</button>
+      </div>
     </div>
+
+    <div v-if="errormsg" class="alert alert-danger mx-3 mt-2 mb-0 py-2">{{ errormsg }}</div>
+
+    <div class="row g-0 flex-grow-1" style="min-height: 0; overflow: hidden;">
+      <div class="col-md-4 col-lg-3 border-end-dark d-flex flex-column h-100 sidebar-bg">
+        <div class="overflow-auto flex-grow-1">
+          <ul class="list-group list-group-flush">
+            <li
+              v-for="chat in chats" :key="chat.id" 
+              class="list-group-item list-group-item-action cursor-pointer d-flex align-items-center py-3 border-bottom-dark chat-item"
+              :class="{ 'active-chat': currentChatId === chat.id }"
+              @click="selectChat(chat.id)"
+            >
+              <div class="me-3">
+                <img v-if="chat.photoChat" :src="chat.photoChat" class="rounded-circle border-teal" style="width: 45px; height: 45px; object-fit: cover;">
+                <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 45px; height: 45px; color: #FAAB36;">
+                  {{ (chat.name || '?').charAt(0).toUpperCase() }}
+                </div>
+              </div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="d-flex w-100 justify-content-between">
+                  <h6 class="mb-0 text-truncate fw-semibold text-light">{{ chat.name || 'Chat ' + chat.id }}</h6>
+                  <small class="text-muted" style="font-size: 0.8rem;">{{ formatDate(chat.lastMessage) }}</small>
+                </div>
+                <p class="mb-0 small text-truncate text-muted mt-1">{{ chat.snippetText || '...' }}</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="col-md-8 col-lg-9 d-flex flex-column h-100 bg-chat-pattern position-relative">
+        <div v-if="!currentChatId" class="d-flex align-items-center justify-content-center h-100 text-muted">
+          <h4>Seleziona una chat</h4>
+        </div>
+                
+        <div v-else class="d-flex flex-column h-100 w-100">
+          <div class="d-flex align-items-center px-3 py-2 header-bg border-bottom-dark shadow-sm" style="flex: 0 0 auto;">
+            <img v-if="currentChatPhoto" :src="currentChatPhoto" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
+            <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold me-2" style="width: 35px; height: 35px; color: #FAAB36;">
+              {{ (currentChatName || '?').charAt(0).toUpperCase() }}
+            </div>
+            <h5 class="m-0 text-light flex-grow-1">{{ currentChatName }}</h5>
+
+            <button v-if="isCurrentChatGroup" class="btn btn-sm btn-outline-orange ms-2" title="Info Gruppo" @click="openGroupInfo">
+              ℹ️ Info
+            </button>
+          </div>
+
+          <div ref="messageContainer" class="flex-grow-1 overflow-auto p-3">
+            <div v-for="msg in messages" :key="msg.id" class="d-flex mb-2 w-100" :class="{ 'justify-content-end': msg.sentBy == myId }">
+              <div
+                class="card border-0 shadow-sm msg-bubble position-relative" 
+                :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }"
+              >
+                <div class="card-body p-2">
+                  <div v-if="isCurrentChatGroup && msg.sentBy != myId" class="fw-bold mb-1" style="font-size: 0.75rem; color: #FAAB36;">
+                    {{ msg.senderName || 'Utente ' + msg.sentBy }}
+                  </div>
+
+                  <div v-if="msg.isForward" class="mb-1 fst-italic" style="font-size: 0.75rem; color: #e0e0e0;">
+                    <span class="me-1">↪</span>Inoltrato
+                  </div>
+                  <div v-if="msg.replyTo" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
+                    <div class="d-flex flex-column">
+                      <template v-if="getReplySnippet(msg.replyTo).found">
+                        <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">
+                          {{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}
+                        </small>
+                        <span class="text-truncate small opacity-75">{{ getReplySnippet(msg.replyTo).text }}</span>
+                      </template>
+                      <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
+                    </div>
+                  </div>
+                  <div v-if="msg.photoUrl" class="mb-2"><img :src="msg.photoUrl" class="img-fluid rounded" style="max-height: 300px;"></div>
+                  <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text }}</p>
+                                    
+                  <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
+                    <span
+                      v-for="(reaction, idx) in msg.reactions" :key="idx" 
+                      class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1"
+                      style="font-size: 0.85rem; cursor: pointer; user-select: none;"
+                      :title="'Reazione di ' + reaction.username" @click="removeReaction(msg.id)"
+                    >
+                      {{ reaction.emoticon }} <span style="font-size: 0.6rem; margin-left: 4px; color: #aaa;">{{ reaction.username }}</span>
+                    </span>
+                  </div>
+
+                  <div class="d-flex justify-content-end align-items-center mt-1 text-nowrap" style="font-size: 0.7rem; opacity: 0.7;">
+                    <span class="me-2">{{ formatDate(msg.sentAt) }}</span>
+                    <span v-if="msg.sentBy == myId" class="me-2">
+                      <span v-if="msg.checkmark" style="color: #FAAB36; font-weight: bold;">✓✓</span>
+                      <span v-else>✓</span>
+                    </span>
+                    <div class="d-flex gap-2 bg-dark rounded px-1 action-buttons position-relative">
+                      <span class="cursor-pointer" title="Reagisci" @click.stop="toggleReactionMenu(msg.id)">😀</span>
+                      <span class="cursor-pointer" title="Rispondi" @click.stop="setReply(msg)">↩️</span>
+                      <span class="cursor-pointer" title="Inoltra" @click.stop="forwardMsg(msg)">➡️</span>
+                      <span v-if="msg.sentBy == myId" class="cursor-pointer text-danger" title="Elimina" @click.stop="deleteMsg(msg.id)">🗑️</span>
+                      <div
+                        v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" 
+                        :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }"
+                      >
+                        <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" style="font-size: 1.2rem;" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="input-area border-top-dark p-2" style="flex: 0 0 auto;">
+            <div v-if="replyingToMsg" class="mb-2 p-2 bg-dark rounded border-start border-4 border-orange d-flex justify-content-between align-items-center">
+              <div class="overflow-hidden">
+                <small class="text-orange fw-bold d-block">Rispondendo a:</small>
+                <small class="text-truncate d-block text-muted">{{ replyingToMsg.text || '📷 Foto' }}</small>
+              </div>
+              <button class="btn btn-close btn-close-white btn-sm ms-2" @click="cancelReply" />
+            </div>
+            <div class="input-group">
+              <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
+              <button class="btn btn-teal" @click="sendMessage">➤</button>
+            </div>
+            <div class="mt-2">
+              <input v-model="newPhotoUrl" type="url" class="form-control form-control-sm border-0 dark-input-sm" placeholder="URL Immagine (opzionale)">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showGroupInfoModal" class="modal-overlay d-flex align-items-center justify-content-center">
+      <div class="card shadow p-0 modal-content dark-modal" style="width: 400px; max-width: 90%;">
+        <div class="card-header bg-dark-teal text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Gestione Gruppo</h5>
+          <button class="btn-close btn-close-white" @click="showGroupInfoModal = false" />
+        </div>
+        <div class="card-body overflow-auto" style="max-height: 70vh;">
+          <div class="mb-3">
+            <label class="form-label fw-bold text-light">Nome Gruppo</label>
+            <input v-model="newGroupName" class="form-control dark-input mb-2" placeholder="Nome gruppo">
+            <label class="form-label fw-bold text-light">Foto Gruppo (URL)</label>
+            <input v-model="newGroupPhoto" class="form-control dark-input mb-2" placeholder="URL Foto">
+            <button class="btn btn-sm btn-outline-teal w-100" @click="saveGroupSettings">Salva Modifiche</button>
+          </div>
+          <hr class="border-secondary">
+
+          <h6 class="fw-bold mb-2 text-orange">Membri ({{ groupMembers.length }})</h6>
+          <ul class="list-group list-group-flush mb-3">
+            <li v-for="m in groupMembers" :key="m.id" class="list-group-item d-flex align-items-center px-0 bg-transparent text-light border-secondary">
+              <div
+                class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center me-2 fw-bold" 
+                style="width: 32px; height: 32px; font-size: 0.8rem; color: #FAAB36;"
+              >
+                {{ m.profilePhoto ? '' : m.username.charAt(0).toUpperCase() }}
+                <img v-if="m.profilePhoto" :src="m.profilePhoto" class="rounded-circle w-100 h-100 object-fit-cover">
+              </div>
+              <span>{{ m.username }}</span>
+              <span v-if="m.id === myId" class="badge bg-teal ms-auto">Tu</span>
+            </li>
+          </ul>
+                    
+          <button class="btn btn-sm btn-success w-100 mb-2" @click="addMemberToGroup">Aggiungi Membro</button>
+          <hr class="border-secondary">
+          <button class="btn btn-sm btn-danger w-100" @click="leaveGroup">Abbandona Gruppo</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>

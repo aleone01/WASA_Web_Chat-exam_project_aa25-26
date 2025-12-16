@@ -1,17 +1,17 @@
 <template>
   <div class="d-flex align-items-center justify-content-center" style="height: 100vh; background-color: #121212;">
     <div class="card shadow p-4 login-card" style="width: 350px;">
-        <h3 class="text-center mb-3" style="color: #249EA0;">WasaText Login</h3>
-        <form @submit.prevent="doLogin">
-            <div class="mb-3">
-                <label class="form-label text-light">Username</label>
-                <input v-model="username" type="text" class="form-control dark-input" placeholder="Tuo username" minlength="3" maxlength="16" required />
-            </div>
-            <button type="submit" class="btn w-100 btn-orange">Entra</button>
-        </form>
-        <div v-if="error" class="alert alert-danger mt-3 py-2" role="alert" style="background-color: #3e1a1a; border-color: #FD5901; color: #ffbaba;">
-            {{ error }}
+      <h3 class="text-center mb-3" style="color: #249EA0;">WasaText Login</h3>
+      <form @submit.prevent="doLogin">
+        <div class="mb-3">
+          <label class="form-label text-light">Username</label>
+          <input v-model="username" type="text" class="form-control dark-input" placeholder="Tuo username" minlength="3" maxlength="16" required>
         </div>
+        <button type="submit" class="btn w-100 btn-orange">Entra</button>
+      </form>
+      <div v-if="error" class="alert alert-danger mt-3 py-2" role="alert" style="background-color: #3e1a1a; border-color: #FD5901; color: #ffbaba;">
+        {{ error }}
+      </div>
     </div>
   </div>
 </template>

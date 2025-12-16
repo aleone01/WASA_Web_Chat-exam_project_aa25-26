@@ -8,42 +8,42 @@ import { RouterLink, RouterView } from 'vue-router'
 </script>
 
 <template>
-    <header class="navbar navbar-dark sticky-top flex-md-nowrap p-0 shadow" style="background-color: #005F60;">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#/">WasaText</a>
-    </header>
+  <header class="navbar navbar-dark sticky-top flex-md-nowrap p-0 shadow" style="background-color: #005F60;">
+    <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6" href="#/">WasaText</a>
+  </header>
 
-    <div class="container-fluid">
-        <div class="row">
-            <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block sidebar collapse custom-sidebar-bg">
-                <div class="position-sticky pt-3 sidebar-sticky">
-                    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-uppercase" style="color: #FAAB36;">
-                        <span>Menu</span>
-                    </h6>
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <RouterLink to="/" class="nav-link">
-                                <i class="bi bi-house-door"></i> Home: Chats
-                            </RouterLink>
-                        </li>
-                        <li class="nav-item">
-                            <RouterLink to="/profile" class="nav-link">
-                                <i class="bi bi-person-circle"></i> Modifica Profilo
-                            </RouterLink>
-                        </li>
-                        <li class="nav-item">
-                            <RouterLink to="/login" class="nav-link logout-link">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </RouterLink>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
-                <RouterView />
-            </main>
+  <div class="container-fluid">
+    <div class="row">
+      <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block sidebar collapse custom-sidebar-bg">
+        <div class="position-sticky pt-3 sidebar-sticky">
+          <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-uppercase" style="color: #FAAB36;">
+            <span>Menu</span>
+          </h6>
+          <ul class="nav flex-column">
+            <li class="nav-item">
+              <RouterLink to="/" class="nav-link">
+                <i class="bi bi-house-door" /> Home: Chats
+              </RouterLink>
+            </li>
+            <li class="nav-item">
+              <RouterLink to="/profile" class="nav-link">
+                <i class="bi bi-person-circle" /> Modifica Profilo
+              </RouterLink>
+            </li>
+            <li class="nav-item">
+              <RouterLink to="/login" class="nav-link logout-link">
+                <i class="bi bi-box-arrow-right" /> Logout
+              </RouterLink>
+            </li>
+          </ul>
         </div>
+      </nav>
+
+      <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
+        <RouterView />
+      </main>
     </div>
+  </div>
 </template>
 
 <style>
