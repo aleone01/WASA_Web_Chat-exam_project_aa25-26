@@ -9,11 +9,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// httpRouterHandler is the signature for functions that accepts a reqcontext.RequestContext in addition to those
-// required by the httprouter package.
+// httpRouterHandler definisce la firma per le funzioni handler che richiedono, oltre ai parametri standard
+// di httprouter, anche un'istanza di reqcontext.RequestContext per gestire i dati specifici della richiesta.
 type httpRouterHandler func(http.ResponseWriter, *http.Request, httprouter.Params, reqcontext.RequestContext)
 
-// wrap parses the request and adds a reqcontext.RequestContext instance related to the request.
+// wrap funge da middleware per gli handler delle rotte. Questa funzione crea un nuovo RequestContext per ogni
+// chiamata, generando un UUID univoco per la richiesta e inizializzando un logger strutturato con i campi
+// identificativi (reqid e remote-ip). Successivamente, passa questo contesto alla funzione handler specificata.
 func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		reqUUID, err := uuid.NewV4()
@@ -26,13 +28,11 @@ func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Re
 			ReqUUID: reqUUID,
 		}
 
-		// Create a request-specific logger
 		ctx.Logger = rt.baseLogger.WithFields(logrus.Fields{
 			"reqid":     ctx.ReqUUID.String(),
 			"remote-ip": r.RemoteAddr,
 		})
 
-		// Call the next handler in chain (usually, the handler function for the path)
 		fn(w, r, ps, ctx)
 	}
 }

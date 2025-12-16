@@ -4,7 +4,9 @@ import (
 	"net/http"
 )
 
-// Handler restituisce l'istanza di httprouter con tutte le rotte registrate
+// Handler configura e restituisce l'oggetto http.Handler principale che gestisce il routing delle richieste API.
+// Questa funzione mappa i metodi HTTP e i percorsi URL (endpoint) alle specifiche funzioni del router (_router),
+// avvolgendole con il middleware 'wrap' per iniettare il contesto della richiesta dove necessario.
 func (rt *_router) Handler() http.Handler {
 
 	// rotta di liveness
@@ -18,6 +20,7 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.PUT("/users/:userId/photo", rt.wrap(rt.setMyPhoto))
 
 	// rotte conversazione
+	rt.router.POST("/users/:userId/chats", rt.wrap(rt.createConversation))
 	rt.router.GET("/users/:userId/chats", rt.wrap(rt.getMyConversations))
 	rt.router.GET("/users/:userId/chats/:chatId", rt.wrap(rt.getConversation))
 
@@ -32,6 +35,7 @@ func (rt *_router) Handler() http.Handler {
 
 	// rotte gruppi
 	rt.router.POST("/groups", rt.wrap(rt.createGroup))
+	rt.router.GET("/groups/:groupId/members", rt.wrap(rt.getGroupMembers))
 	rt.router.POST("/groups/:groupId/members", rt.wrap(rt.addToGroup))
 	rt.router.DELETE("/groups/:groupId/leave", rt.wrap(rt.leaveGroup))
 	rt.router.PUT("/groups/:groupId/name", rt.wrap(rt.setGroupName))

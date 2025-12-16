@@ -1,41 +1,50 @@
 package database
 
 import (
+	"database/sql"
 	"errors"
 	"time"
 )
 
-// CreateMessage inserisce un nuovo messaggio nel database
-func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time) (Message, error) {
+// CreateMessage inserisce un nuovo messaggio nel database.
+// Gestisce parametri opzionali come 'replyTo' (per le risposte) e 'isForward' (per i messaggi inoltrati).
+// Dopo l'inserimento, costruisce e restituisce l'oggetto Message completo con l'ID generato.
+func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time, replyTo int, isForward bool) (Message, error) {
 	var m Message
+
+	query := `INSERT INTO messages (chat_id, user_id, text, photo_url, sent_at, is_read, reply_to_message_id, is_forward) VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)`
+
+	var replyToVal sql.NullInt64
+	if replyTo > 0 {
+		replyToVal.Int64 = int64(replyTo)
+		replyToVal.Valid = true
+	}
+
+	res, err := db.c.Exec(query, chatId, userId, text, photoUrl, sentAt, replyToVal, isForward)
+	if err != nil {
+		return m, err
+	}
+
+	lastId, err := res.LastInsertId()
+	if err != nil {
+		return m, err
+	}
+
+	m.Id = int(lastId)
 	m.ChatId = chatId
 	m.SentBy = userId
 	m.Text = text
 	m.PhotoUrl = photoUrl
 	m.SentAt = sentAt
-	m.Checkmark = true
-
-	// Esecuzione INSERT
-	res, err := db.c.Exec(`
-		INSERT INTO messages (chat_id, user_id, text, photo_url, sent_at) 
-		VALUES (?, ?, ?, ?, ?)`,
-		chatId, userId, text, photoUrl, m.SentAt)
-
-	if err != nil {
-		return m, err
-	}
-
-	// Recupero ID generato
-	lastId, err := res.LastInsertId()
-	if err != nil {
-		return m, err
-	}
-	m.Id = int(lastId)
+	m.Checkmark = false
+	m.ReplyTo = replyTo
+	m.IsForward = isForward
 
 	return m, nil
 }
 
-// AddReaction aggiunge un'emoticon a un messaggio (È QUESTA CHE MANCAVA)
+// AddReaction salva una reazione (emoticon) di un utente a uno specifico messaggio.
+// L'unicità della coppia messaggio-utente è garantita dalla chiave primaria della tabella reactions.
 func (db *appdbimpl) AddReaction(messageId int, userId int, emoticon string) error {
 	_, err := db.c.Exec(`
 		INSERT INTO reactions (message_id, user_id, emoticon) 
@@ -45,13 +54,14 @@ func (db *appdbimpl) AddReaction(messageId int, userId int, emoticon string) err
 	return err
 }
 
-// RemoveReaction rimuove la reazione dell'utente da un messaggio
+// RemoveReaction elimina una reazione precedentemente aggiunta da un utente a un messaggio.
 func (db *appdbimpl) RemoveReaction(messageId int, userId int) error {
 	_, err := db.c.Exec("DELETE FROM reactions WHERE message_id = ? AND user_id = ?", messageId, userId)
 	return err
 }
 
-// DeleteMessage elimina un messaggio (solo se l'utente ne è il proprietario)
+// DeleteMessage cancella un messaggio dal database, ma solo se l'utente richiedente ne è l'autore.
+// Restituisce un errore specifico se il messaggio non esiste o se l'utente non è autorizzato.
 func (db *appdbimpl) DeleteMessage(messageId int, userId int) error {
 	res, err := db.c.Exec("DELETE FROM messages WHERE id = ? AND user_id = ?", messageId, userId)
 	if err != nil {
@@ -69,7 +79,8 @@ func (db *appdbimpl) DeleteMessage(messageId int, userId int) error {
 	return nil
 }
 
-// GetMessage recupera un singolo messaggio per ID (utile per il forward)
+// GetMessage recupera i dettagli di un singolo messaggio tramite il suo ID.
+// Restituisce una struttura Message contenente i dati essenziali (testo, foto, timestamp, ecc.).
 func (db *appdbimpl) GetMessage(messageId int) (Message, error) {
 	var m Message
 	err := db.c.QueryRow(`

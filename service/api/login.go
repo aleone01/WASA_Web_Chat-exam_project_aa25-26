@@ -8,6 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// doLogin gestisce il processo di autenticazione o registrazione di un utente.
+// La funzione accetta un nome utente nel corpo della richiesta, ne valida la lunghezza, e tenta di effettuare il login tramite il database.
+// Se l'utente non esiste, viene creato (registrazione implicita). Restituisce l'identificativo univoco dell'utente
+// e un codice di stato appropriato (200 OK per login esistente, 201 Created per nuovo utente).
 func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	var reqBody struct {
 		Username *string `json:"username"`
@@ -22,7 +26,6 @@ func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter
 		return
 	}
 
-	// Usa il logger del contesto
 	ctx.Logger.Infof("Tentativo di login per: %s", *reqBody.Username)
 
 	id, created, err := rt.db.UserLogin(*reqBody.Username)
@@ -39,7 +42,6 @@ func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// Risposta con l'ID utente
 	_ = json.NewEncoder(w).Encode(struct {
 		Identifier int `json:"identifier"`
 	}{Identifier: id})

@@ -7,17 +7,19 @@ import (
 	"time"
 )
 
-// strutture dati usate nelle API
-// User rappresenta un utente del sistema
+// User rappresenta la struttura dati di un utente registrato nel sistema.
+// Contiene l'identificativo univoco, il nome utente e l'URL (opzionale) della foto profilo.
 type User struct {
 	Id           int    `json:"id"`
 	Username     string `json:"username"`
 	ProfilePhoto string `json:"profilePhoto"`
 }
 
-// ChatListItem rappresenta un elemento della lista delle chat
+// ChatListItem definisce il modello per visualizzare l'anteprima di una conversazione nella lista delle chat.
+// Include informazioni come il nome della chat (o del gruppo), l'ultimo messaggio inviato e lo stato (gruppo o chat privata).
 type ChatListItem struct {
 	Id          int       `json:"id"`
+	Name        string    `json:"name,omitempty"`
 	IsGroup     bool      `json:"isGroup"`
 	PhotoChat   string    `json:"photoChat"`
 	LastMessage time.Time `json:"lastMessage"`
@@ -25,18 +27,32 @@ type ChatListItem struct {
 	SnippetIcon string    `json:"snippetIcon"`
 }
 
-// Message rappresenta un messaggio in una chat
+// Message modella un singolo messaggio scambiato all'interno di una conversazione.
+// Oltre al contenuto (testo/foto), tiene traccia del mittente, del timestamp, dello stato di lettura,
+// dei riferimenti (reply/forward) e include il nome del mittente per facilitare la visualizzazione nel frontend.
 type Message struct {
-	Id        int       `json:"id"`
-	ChatId    int       `json:"-"`
-	Text      string    `json:"text"`
-	SentAt    time.Time `json:"sentAt"`
-	SentBy    int       `json:"sentBy"`
-	PhotoUrl  string    `json:"photoUrl,omitempty"`
-	Checkmark bool      `json:"checkmark"`
+	Id         int        `json:"id"`
+	ChatId     int        `json:"-"`
+	Text       string     `json:"text"`
+	SentAt     time.Time  `json:"sentAt"`
+	SentBy     int        `json:"sentBy"`
+	PhotoUrl   string     `json:"photoUrl,omitempty"`
+	Checkmark  bool       `json:"checkmark"`
+	ReplyTo    int        `json:"replyTo"`
+	IsForward  bool       `json:"isForward"`
+	SenderName string     `json:"senderName"`
+	Reactions  []Reaction `json:"reactions"`
 }
 
-// Group rappresenta un gruppo di chat
+// Reaction rappresenta una singola reazione (emoticon) lasciata da un utente su un messaggio.
+// Include l'emoticon stessa e lo username dell'autore, permettendo al frontend di mostrare "chi ha reagito".
+type Reaction struct {
+	Emoticon string `json:"emoticon"`
+	Username string `json:"username"`
+}
+
+// Group rappresenta i dettagli di un gruppo di conversazione.
+// Contiene i metadati del gruppo (nome, foto) e la lista degli ID degli utenti partecipanti.
 type Group struct {
 	Id          int    `json:"id"`
 	GroupName   string `json:"groupname"`
@@ -44,96 +60,58 @@ type Group struct {
 	MembersList []int  `json:"membersList"`
 }
 
-// AppDatabase is the high level interface for the DB
-// Qui definiamo i metodi che il resto dell'applicazione potrà chiamare.
+// AppDatabase è l'interfaccia principale che astrae tutte le interazioni con il database.
+// Definisce i metodi necessari per la gestione di utenti, autenticazione, chat (private e gruppi),
+// messaggistica e reazioni, disaccoppiando la logica di business dall'implementazione SQL sottostante.
 type AppDatabase interface {
 	Ping() error
-
-	// CheckToken verifica se il token di sessione è valido e restituisce l'userId associato
 	CheckToken(token string) (int, error)
-
-	// UserLogin verifica se l'utente esiste: se sì restituisce il suo ID e 'false', se no lo crea e restituisce il suo ID e 'true'.
 	UserLogin(username string) (int, bool, error)
-
-	// SetUsername aggiorna lo username dell'utente, riconosciuto con userId
+	GetUserByUsername(username string) (User, error)
 	SetMyUsername(userId int, newUsername string) (User, error)
-
-	// SetProfilePhoto aggiorna la foto profilo dell'utente, riconosciuto con userId
 	SetProfilePhoto(userId int, photoURL string) (User, error)
-
-	// GetConversations restituisce la lista delle conversazioni dell'utente ordinate cronologicamente
-	GetConversations(userId int) ([]ChatListItem, error)
-
-	// GetChatWithUser cerca le conversazioni dell'utente con un altro utente specifico (username)
+	CreateConversation(user1 int, user2 int) (ChatListItem, error)
+	GetMyConversations(userId int) ([]ChatListItem, error)
+	GetConversation(userId int, chatId int) ([]Message, error)
 	GetChatWithUser(userId int, username string) ([]ChatListItem, error)
-
-	// GetChatMessages restituisce i messaggi di una chat specifica, se l'userId è partecipante della chat
-	GetChatMessages(chatId int, userId int) ([]Message, error)
-
-	// CreateMessage crea un nuovo messaggio in una chat
-	CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time) (Message, error)
-
-	// AddReaction aggiunge un'emoticon a un messaggio
+	CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time, replyTo int, isForward bool) (Message, error)
 	AddReaction(messageId int, userId int, emoticon string) error
-
-	// RemoveReaction rimuove la reazione dell'utente da un messaggio
 	RemoveReaction(messageId int, userId int) error
-
-	// DeleteMessage elimina un messaggio (solo se l'utente ne è il proprietario)
 	DeleteMessage(messageId int, userId int) error
-
-	// GetMessage recupera un messaggio dal suo ID
 	GetMessage(messageId int) (Message, error)
-
-	// CreateGroup crea un nuovo gruppo con i membri specificati
 	CreateGroup(name string, photo string, members []int, creatorId int) (Group, error)
-
-	// AddGroupMembers aggiunge nuovi membri a un gruppo esistente
 	AddGroupMembers(groupId int, newMembers []int) (Group, error)
-
-	// LeaveGroup rimuove un utente (se stesso) dal gruppo
 	LeaveGroup(groupId int, userId int) error
-
-	// SetGroupName aggiorna il nome del gruppo
 	SetGroupName(groupId int, newName string) (Group, error)
-
-	// SetGroupPhoto aggiorna la foto del gruppo
 	SetGroupPhoto(groupId int, photoURL string) (Group, error)
-
-	// CheckGroupMembership verifica se un utente è membro di un gruppo
 	CheckGroupMembership(groupId int, userId int) (bool, error)
-
-	// GetGroupById recupera un gruppo dal suo ID
 	GetGroupById(groupId int) (Group, error)
+	GetGroupMembers(groupId int) ([]User, error)
 }
 
-// appdbimpl è l'implementazione concreta di AppDatabase
+// appdbimpl è l'implementazione concreta dell'interfaccia AppDatabase basata su database/sql (SQLite).
 type appdbimpl struct {
 	c *sql.DB
 }
 
-// New returns a new instance of AppDatabase based on the SQLite connection `db`.
-// `db` is required - an error will be returned if `db` is `nil`.
+// New inizializza una nuova istanza del database.
+// Configura le opzioni di connessione (es. chiavi esterne per SQLite) e crea lo schema delle tabelle
+// (utenti, chat, membri, messaggi, reazioni) se non esistono già.
 func New(db *sql.DB) (AppDatabase, error) {
-
-	// controllo che il db non sia nil
 	if db == nil {
 		return nil, errors.New("database is required when building a AppDatabase")
 	}
-
-	// abilita le Foreign Keys
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
 	}
 
-	// tabelle sqlite create sulla base degli schemas di api.yaml
 	var schema = `
-
 	CREATE TABLE IF NOT EXISTS users 
 	(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL UNIQUE,
-		profile_photo TEXT
+		profile_photo TEXT,
+		token TEXT
 	);
 
 	CREATE TABLE IF NOT EXISTS chats 
@@ -161,7 +139,9 @@ func New(db *sql.DB) (AppDatabase, error) {
 		text TEXT,
 		photo_url TEXT,
 		sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		is_read BOOLEAN DEFAULT FALSE,
 		reply_to_message_id INTEGER,
+		is_forward BOOLEAN DEFAULT FALSE,
 		FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (reply_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
@@ -177,19 +157,16 @@ func New(db *sql.DB) (AppDatabase, error) {
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 	`
-
-	// esecuzione creazione tabelle
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("error creating database structure: %w", err)
 	}
 
-	// restituisce l'istanza di appdbimpl
 	return &appdbimpl{
 		c: db,
 	}, nil
 }
 
-// Ping verifica la connessione al database
+// Ping verifica la connettività al database sottostante.
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
 }

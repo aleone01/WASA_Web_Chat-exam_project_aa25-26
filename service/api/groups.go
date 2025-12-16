@@ -9,10 +9,12 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// createGroup gestisce la creazione di un nuovo gruppo
+// createGroup permette a un utente autenticato di creare un nuovo gruppo di conversazione.
+// La funzione estrae il token di autenticazione per identificare il creatore, analizza il corpo della richiesta JSON
+// per ottenere il nome del gruppo, la foto e la lista iniziale dei membri, e infine invoca il metodo del database
+// per persistere il nuovo gruppo. Restituisce l'oggetto gruppo creato o un errore appropriato.
 func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// Auth manuale semplificata (recupera user dal token)
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 {
 		token = token[7:]
@@ -20,46 +22,41 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 		token = r.Header.Get("sessionToken")
 	}
 
-	// recupera userId dal token
 	userId, err := rt.db.CheckToken(token)
 	if err != nil {
 		rt.sendError(w, http.StatusUnauthorized, 401, "Login richiesto")
 		return
 	}
 
-	// parsing del body della richiesta
 	var reqBody struct {
-		Name    string `json:"name"`
-		Photo   string `json:"photo"`
-		Members []int  `json:"members"`
+		Name    string `json:"groupname"`
+		Photo   string `json:"groupPhoto"`
+		Members []int  `json:"membersList"`
 	}
 
-	// decodifica JSON
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	// creazione del gruppo nel database
 	g, err := rt.db.CreateGroup(reqBody.Name, reqBody.Photo, reqBody.Members, userId)
 	if err != nil {
 		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione")
 		return
 	}
 
-	// risposta con i dati del gruppo creato
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// addToGroup gestisce l'aggiunta di membri a un gruppo
+// addToGroup consente l'aggiunta di nuovi membri a un gruppo esistente.
+// Verifica preliminarmente che l'utente che effettua la richiesta sia già un membro del gruppo (controllo dei permessi).
+// Se autorizzato, decodifica la lista dei nuovi membri dal corpo della richiesta e aggiorna il database.
 func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// estrazione groupId dai parametri della rotta
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 
-	// Auth manuale semplificata (recupera user dal token)
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 {
 		token = token[7:]
@@ -68,36 +65,40 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 	userId, _ := rt.db.CheckToken(token)
 
-	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
 	if !isMember {
 		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro")
 		return
 	}
 
-	// parsing del body della richiesta
 	var reqBody struct {
-		Members []int `json:"members"`
+		Username string `json:"username"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	// aggiunta dei membri al gruppo nel database
-	g, _ := rt.db.AddGroupMembers(groupId, reqBody.Members)
+	targetUser, err := rt.db.GetUserByUsername(reqBody.Username)
+	if err != nil {
+		rt.sendError(w, http.StatusNotFound, 404, "Utente non trovato")
+		return
+	}
+
+	g, _ := rt.db.AddGroupMembers(groupId, []int{targetUser.Id})
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// leaveGroup gestisce l'uscita di un utente da un gruppo
+// leaveGroup gestisce la richiesta di un utente di abbandonare un gruppo specifico.
+// Identifica l'utente tramite il token di autenticazione e invoca la logica del database per rimuovere
+// l'associazione tra l'utente e il gruppo indicato nell'URL.
 func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// estrazione groupId dai parametri della rotta
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 	token := r.Header.Get("Authorization")
 
-	// Auth manuale semplificata (recupera user dal token)
 	if len(token) > 7 {
 		token = token[7:]
 	} else if token == "" {
@@ -105,23 +106,21 @@ func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 	userId, _ := rt.db.CheckToken(token)
 
-	// rimozione dell'utente dal gruppo nel database
 	if err := rt.db.LeaveGroup(groupId, userId); err != nil {
 		rt.sendError(w, http.StatusInternalServerError, 500, "Errore")
 		return
 	}
 
-	// risposta di successo senza contenuto
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setGroupName gestisce l'aggiornamento del nome del gruppo
+// setGroupName permette di modificare il nome di un gruppo esistente.
+// Esegue un controllo di appartenenza per assicurarsi che solo i membri del gruppo possano modificarne le proprietà.
+// In caso di successo, aggiorna il nome nel database e restituisce l'oggetto gruppo aggiornato.
 func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// estrazione groupId dai parametri della rotta
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 
-	// Auth manuale semplificata (recupera user dal token)
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 {
 		token = token[7:]
@@ -130,38 +129,33 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 	}
 	userId, _ := rt.db.CheckToken(token)
 
-	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
 	if !isMember {
 		rt.sendError(w, http.StatusForbidden, 403, "Accesso negato")
 		return
 	}
 
-	// parsing del body della richiesta
 	var reqBody struct {
-		Name string `json:"name"`
+		Name string `json:"groupname"`
 	}
 
-	// aggiornamento del nome del gruppo nel database
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 	g, _ := rt.db.SetGroupName(groupId, reqBody.Name)
 
-	// risposta con i dati aggiornati del gruppo
 	w.Header().Set("Content-Type", "application/json")
-	// CORREZIONE: Assegnato a _
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// setGroupPhoto gestisce l'aggiornamento della foto del gruppo
+// setGroupPhoto consente di aggiornare l'immagine (o il riferimento all'immagine) di un gruppo.
+// Similmente alle altre operazioni di modifica, verifica che il richiedente sia membro del gruppo prima di
+// procedere con l'aggiornamento nel database.
 func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
-	// estrazione groupId dai parametri della rotta
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
 
-	// Auth manuale semplificata
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 {
 		token = token[7:]
@@ -170,27 +164,54 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 	}
 	userId, _ := rt.db.CheckToken(token)
 
-	// verifica se l'utente è membro del gruppo
 	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
 	if !isMember {
 		rt.sendError(w, http.StatusForbidden, 403, "Accesso negato")
 		return
 	}
 
-	// Parsing JSON
 	var reqBody struct {
-		Photo string `json:"image"`
+		Photo string `json:"groupPhoto"`
 	}
 
-	// Aggiornamento nome nel database
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
 		return
 	}
 
-	// Aggiornamento foto del gruppo nel database
 	g, _ := rt.db.SetGroupPhoto(groupId, reqBody.Photo)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(g)
 
+}
+
+func (rt *_router) getGroupMembers(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
+	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
+
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 {
+		token = token[7:]
+	} else if token == "" {
+		token = r.Header.Get("sessionToken")
+	}
+	userId, _ := rt.db.CheckToken(token)
+
+	// Controllo membership
+	isMember, _ := rt.db.CheckGroupMembership(groupId, userId)
+	if !isMember {
+		rt.sendError(w, http.StatusForbidden, 403, "Non sei membro del gruppo")
+		return
+	}
+
+	members, err := rt.db.GetGroupMembers(groupId)
+	if err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore DB")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Members interface{} `json:"membersList"`
+	}{Members: members})
 }
