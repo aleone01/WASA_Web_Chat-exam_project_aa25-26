@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  # Servizio Backend
+  backend:
+    build:
+      context: .
+      dockerfile: dockerfile.backend
+    ports:
+      - "3000:3000" # Mappa la porta 3000 del container alla 3000 del tuo PC
+
+  # Servizio Frontend
+  frontend:
+    build:
+      context: ./webui
+      dockerfile: dockerfile.frontend
+    ports:
+      - "8080:80" # Il sito sarà accessibile su localhost:8080
+    depends_on:
+      - backend
