@@ -80,6 +80,10 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 		chats = append(chats, c)
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return chats, nil
 }
 
@@ -124,6 +128,10 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 		}
 
 		chats = append(chats, c)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return chats, nil
@@ -216,9 +224,15 @@ func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) 
 		reactionRows, err := db.c.Query("SELECT r.emoticon, u.username FROM reactions r JOIN users u ON r.user_id = u.id WHERE r.message_id = ?", m.Id)
 		if err == nil {
 			for reactionRows.Next() {
+
 				var r Reaction
 				if err := reactionRows.Scan(&r.Emoticon, &r.Username); err == nil {
 					m.Reactions = append(m.Reactions, r)
+				}
+
+				if err := reactionRows.Err(); err != nil {
+					reactionRows.Close()
+					return nil, err
 				}
 			}
 			reactionRows.Close()
@@ -226,5 +240,10 @@ func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) 
 
 		messages = append(messages, m)
 	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return messages, nil
 }

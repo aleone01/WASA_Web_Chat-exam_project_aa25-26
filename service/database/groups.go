@@ -164,5 +164,10 @@ func (db *appdbimpl) GetGroupMembers(groupId int) ([]User, error) {
 			users = append(users, u)
 		}
 	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return users, nil
 }

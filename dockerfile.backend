@@ -1,32 +1,32 @@
-# Compilazione
+# Usa Go 1.25 come richiesto da go.mod
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Installa l'intero set di strumenti di compilazione (gcc, musl-dev, make, ecc.)
+# Installa git e build-base (gcc) per compilare SQLite con CGO
 RUN apk add --no-cache git build-base
 
-# Copia i file delle dipendenze
+# Copia i file delle dipendenze e scarica i moduli
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copia il codice sorgente
+# Copia tutto il codice sorgente
 COPY . .
 
-# Compila l'eseguibile forzando l'uso di CGO
+# Abilita CGO e compila il main.go che si trova in cmd/webapi
 ENV CGO_ENABLED=1
 RUN go build -o webapi ./cmd/webapi
 
-# Step 2: Runtime
+# Immagine Finale
 FROM alpine:latest
 
 WORKDIR /root/
 
-# Copia l'eseguibile dallo step precedente
+# Copia l'eseguibile compilato
 COPY --from=builder /app/webapi .
 
-# Espone la porta del backend
+# Espone la porta API
 EXPOSE 3000
 
-# Avvia l'app
+# Avvia il server
 CMD ["./webapi"]
