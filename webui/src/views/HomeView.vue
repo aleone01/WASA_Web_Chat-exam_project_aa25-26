@@ -323,7 +323,7 @@ export default {
     <div class="d-flex justify-content-between align-items-center py-2 px-3 border-bottom-dark header-bg" style="flex: 0 0 auto;">
       <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText</h4>
       <div class="btn-group">
-        <button class="btn btn-sm btn-teal" @click="startConversation">Nuova Chat</button>
+        <button class="btn btn-sm btn-teal" @click="startConversation">Cerca</button>
         <button class="btn btn-sm btn-outline-orange" @click="createGroup">Crea Gruppo</button>
       </div>
     </div>
