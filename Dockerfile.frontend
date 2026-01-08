@@ -1,0 +1,25 @@
+# Build del progetto Vue
+FROM node:lts-alpine AS build-stage
+
+WORKDIR /app
+
+# Copia package.json e installa dipendenze
+COPY package*.json ./
+RUN npm install
+
+# Copia il codice sorgente del frontend
+COPY . .
+
+# Esegue la build (crea la cartella dist)
+RUN npm run build
+
+# Serve con Nginx
+FROM nginx:stable-alpine AS production-stage
+
+# Copia i file compilati nella cartella di Nginx
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+
+# Espone la porta 80, standard per il web
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
