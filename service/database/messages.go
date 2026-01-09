@@ -9,10 +9,11 @@ import (
 // CreateMessage inserisce un nuovo messaggio nel database.
 // Gestisce parametri opzionali come 'replyTo' (per le risposte) e 'isForward' (per i messaggi inoltrati).
 // Dopo l'inserimento, costruisce e restituisce l'oggetto Message completo con l'ID generato.
-func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time, replyTo int, isForward bool) (Message, error) {
+func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoFile []byte, sentAt time.Time, replyTo int, isForward bool) (Message, error) {
 	var m Message
 
-	query := `INSERT INTO messages (chat_id, user_id, text, photo_url, sent_at, is_read, reply_to_message_id, is_forward) VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)`
+	// Query aggiornata: photo_url diventa photo_file
+	query := `INSERT INTO messages (chat_id, user_id, text, photo_file, sent_at, is_read, reply_to_message_id, is_forward) VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)`
 
 	var replyToVal sql.NullInt64
 	if replyTo > 0 {
@@ -20,7 +21,7 @@ func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl
 		replyToVal.Valid = true
 	}
 
-	res, err := db.c.Exec(query, chatId, userId, text, photoUrl, sentAt, replyToVal, isForward)
+	res, err := db.c.Exec(query, chatId, userId, text, photoFile, sentAt, replyToVal, isForward)
 	if err != nil {
 		return m, err
 	}
@@ -34,7 +35,7 @@ func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoUrl
 	m.ChatId = chatId
 	m.SentBy = userId
 	m.Text = text
-	m.PhotoUrl = photoUrl
+	m.PhotoFile = photoFile
 	m.SentAt = sentAt
 	m.Checkmark = false
 	m.ReplyTo = replyTo
@@ -83,13 +84,18 @@ func (db *appdbimpl) DeleteMessage(messageId int, userId int) error {
 // Restituisce una struttura Message contenente i dati essenziali (testo, foto, timestamp, ecc.).
 func (db *appdbimpl) GetMessage(messageId int) (Message, error) {
 	var m Message
+
 	err := db.c.QueryRow(`
-		SELECT id, chat_id, user_id, text, COALESCE(photo_url, ''), sent_at 
+		SELECT id, chat_id, user_id, text, photo_file, sent_at 
 		FROM messages WHERE id = ?`,
-		messageId).Scan(&m.Id, &m.ChatId, &m.SentBy, &m.Text, &m.PhotoUrl, &m.SentAt)
+		messageId).Scan(&m.Id, &m.ChatId, &m.SentBy, &m.Text, &m.PhotoFile, &m.SentAt)
 
 	if err != nil {
 		return m, err
+	}
+
+	if m.PhotoFile == nil {
+		m.PhotoFile = []byte{}
 	}
 	m.Checkmark = true
 	return m, nil

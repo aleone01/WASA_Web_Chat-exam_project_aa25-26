@@ -127,7 +127,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [photo]
@@ -135,11 +135,10 @@ paths:
               properties:
                 photo:
                   type: string
-                  format: url
-                  minLength: 1
-                  maxLength: 2000
-                  pattern: '^.*?$'
-                  description: URL foto profilo 
+                  format: binary
+                  minLength: 0
+                  maxLength: 10485760
+                  description: File immagine foto profilo 
       responses:
         '200':
           description: foto aggiornata con successo
@@ -309,7 +308,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               description: Oggetto per l'invio di un messaggio
@@ -317,16 +316,15 @@ paths:
                 text:
                   type: string
                   description: Contenuto testuale del messaggio
+                  pattern: '^.*$'
                   minLength: 0
                   maxLength: 2000
-                  pattern: "^.*$"
-                photoUrl: 
+                file: 
                   type: string
-                  description: URL della foto
-                  format: url
+                  description: File immagine
+                  format: binary
                   minLength: 0
-                  maxLength: 2000
-                  pattern: "^.*$"
+                  maxLength: 10485760
                 replyTo:
                   type: integer
                   description: ID del messaggio a cui si risponde
@@ -480,7 +478,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [groupname, membersList] 
@@ -489,16 +487,15 @@ paths:
                 groupname: 
                   type: string
                   description: Nome del gruppo
+                  pattern: '^.*$'
                   minLength: 1
                   maxLength: 100
-                  pattern: '^.*?$'
-                groupPhoto: 
+                groupPhotoFile: 
                   type: string
-                  format: url
-                  minLength: 10
-                  maxLength: 200
-                  pattern: '^.*?$'
-                  description: Foto del gruppo (URL)
+                  format: binary
+                  description: Foto del gruppo (file)
+                  minLength: 0
+                  maxLength: 10485760
                 membersList: 
                   type: array
                   minItems: 1
@@ -697,18 +694,18 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [groupPhoto] 
+              required: [groupPhotoFile] 
               description: oggetto che ritorna la foto da caricare per il gruppo
               properties:
-                groupPhoto: 
+                groupPhotoFile: 
                   description: URL o dati della nuova foto
                   type: string
-                  format: url
-                  minLength: 10
-                  maxLength: 200
+                  format: binary
+                  minLength: 0
+                  maxLength: 10485760
       responses:
         '200':
           description: foto del gruppo aggiornata

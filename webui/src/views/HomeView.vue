@@ -1,10 +1,6 @@
 <script>
 import api from '@/services/api'
 
-// HomeView è il componente principale dell'interfaccia utente.
-// Gestisce la visualizzazione a due colonne (lista chat a sinistra, conversazione a destra),
-// il polling per i nuovi messaggi, l'invio di messaggi/foto, la creazione di gruppi e la gestione
-// delle interazioni come risposte, inoltri e cancellazione messaggi.
 export default {
     data: function() {
         return {
@@ -15,9 +11,9 @@ export default {
             messages: [],           
             currentChatId: null,
             currentChatName: "",
-            currentChatPhoto: "",
+            currentChatPhoto: null, 
             newMessageText: "",
-            newPhotoUrl: "",     
+            newPhotoFile: null,     
             replyingToMsg: null, 
             refreshInterval: null,
             availableReactions: ['👍', '❤️', '😂', '😮', '😢', '😡'],
@@ -25,25 +21,21 @@ export default {
             showGroupInfoModal: false,
             groupMembers: [],
             newGroupName: "",
-            newGroupPhoto: "",
+            newGroupPhotoFile: null,
         }
     },
     computed: {
-        // Determina se la chat attualmente selezionata è un gruppo basandosi sui metadati della chat.
         isCurrentChatGroup() {
             if (!this.currentChatId) return false;
             const chat = this.chats.find(c => c.id === this.currentChatId);
             return chat ? !!chat.isGroup : false;
         },
-        // Recupera lo username dell'utente corrente dalla sessione per identificare le proprie reazioni
         myUsername() { return "Me"; }
     },
-    // Lifecycle Hook: all'avvio verifica l'autenticazione, carica i dati iniziali e imposta il polling.
     mounted() {
         if (!this.myId) { this.$router.push('/login'); return; }
         this.refresh();
         this.refreshInterval = setInterval(() => {
-            // Aggiorniamo anche la lista chat (refresh) per vedere se ci hanno aggiunto a nuovi gruppi
             this.refresh();
             if (this.currentChatId) {
                 api.getConversation(this.myId, this.currentChatId).then(res => {
@@ -52,10 +44,13 @@ export default {
             }
         }, 3000);
     },
-    // Lifecycle Hook: pulisce l'intervallo di polling alla distruzione del componente.
     unmounted() { clearInterval(this.refreshInterval); },
     methods: {
-        // Scarica la lista aggiornata delle conversazioni dal server e aggiorna lo stato locale.
+        getImageSrc(base64Data) {
+            if (!base64Data) return null;
+            return `data:image/jpeg;base64,${base64Data}`;
+        },
+
         async refresh() {
             try {
                 const response = await api.getMyConversations(this.myId);
@@ -63,20 +58,18 @@ export default {
             } catch (e) { console.error(e); }
         },
 
-        // Gestisce la selezione di una chat dalla lista: imposta l'ID corrente, carica i metadati
-        // e scarica la cronologia dei messaggi, scorrendo infine verso il basso.
         async selectChat(chatId) {
             this.currentChatId = chatId;
             this.loading = true;
             this.messages = [];
             this.replyingToMsg = null;
-            this.activeReactionMenuId = null; // Chiude eventuali menu aperti
+            this.activeReactionMenuId = null; 
             this.showGroupInfoModal = false;
 
             const selectedChat = this.chats.find(c => c.id === chatId);
             if (selectedChat) {
                 this.currentChatName = selectedChat.name;
-                this.currentChatPhoto = selectedChat.photoChat;
+                this.currentChatPhoto = selectedChat.photoChat; 
             }
 
             try {
@@ -89,19 +82,16 @@ export default {
             this.loading = false;
         },
 
-
-        // Apre il modale e carica i dati del gruppo
         async openGroupInfo() {
             const chat = this.chats.find(c => c.id === this.currentChatId);
             if (!chat || !chat.isGroup) return;
 
             this.showGroupInfoModal = true;
             this.newGroupName = this.currentChatName;
-            this.newGroupPhoto = this.currentChatPhoto;
+            this.newGroupPhotoFile = null;
             await this.loadGroupMembers();
         },
 
-        // Carica la lista membri dal backend
         async loadGroupMembers() {
             try {
                 const res = await api.getGroupMembers(this.currentChatId);
@@ -111,82 +101,89 @@ export default {
             }
         },
 
-        // Aggiunge un membro (dal modale)
         async addMemberToGroup() {
             const username = prompt("Inserisci lo username da aggiungere:");
             if (!username) return;
             try {
                 await api.addGroupMember(this.currentChatId, username);
-                await this.loadGroupMembers(); // Ricarica la lista visiva
+                await this.loadGroupMembers();
                 alert("Membro aggiunto!");
             } catch (e) {
                 alert("Errore: " + (e.response?.data?.message || e.toString()));
             }
         },
 
-        // Abbandona il gruppo
         async leaveGroup() {
             if (!confirm("Sei sicuro di voler abbandonare il gruppo?")) return;
             try {
                 await api.leaveGroup(this.myId, this.currentChatId);
                 this.showGroupInfoModal = false;
                 this.currentChatId = null;
-                await this.refresh(); // Aggiorna la lista chat (il gruppo sparirà)
+                await this.refresh();
             } catch (e) {
                 alert("Errore uscita: " + e.toString());
             }
         },
 
-        // Salva modifiche nome/foto
+        onGroupFileChange(e) {
+            const files = e.target.files || e.dataTransfer.files;
+            if (!files.length) return;
+            this.newGroupPhotoFile = files[0];
+        },
+
+        onMessageFileChange(e) {
+             const files = e.target.files || e.dataTransfer.files;
+             if (!files.length) return;
+             this.newPhotoFile = files[0];
+        },
+
         async saveGroupSettings() {
             try {
                 if (this.newGroupName !== this.currentChatName) {
                     await api.setGroupName(this.myId, this.currentChatId, this.newGroupName);
                     this.currentChatName = this.newGroupName;
                 }
-                if (this.newGroupPhoto !== this.currentChatPhoto) {
-                    await api.setGroupPhoto(this.myId, this.currentChatId, this.newGroupPhoto);
-                    this.currentChatPhoto = this.newGroupPhoto;
+                if (this.newGroupPhotoFile) {
+                    await api.setGroupPhoto(this.myId, this.currentChatId, this.newGroupPhotoFile);
+                    this.refresh();
                 }
                 alert("Gruppo aggiornato!");
-                this.refresh(); // Aggiorna la sidebar
+                this.refresh(); 
             } catch (e) {
                 alert("Errore aggiornamento: " + e.toString());
             }
         },
 
-        // Imposta un messaggio specifico come target per una risposta (Reply).
         setReply(msg) {
             this.replyingToMsg = msg;
             this.$nextTick(() => this.$refs.inputField.focus());
         },
 
-        // Annulla la modalità di risposta.
         cancelReply() {
             this.replyingToMsg = null;
         },
 
-        // Cerca e restituisce un frammento del messaggio originale a cui si sta rispondendo
-        // per visualizzarlo nell'interfaccia utente.
         getReplySnippet(replyId) {
             if (!replyId) return { found: false, text: 'Messaggio non disponibile', authorId: null };
-            
             const parent = this.messages.find(m => m.id === replyId);
             if (parent) {
-                const snippet = parent.text ? parent.text : (parent.photoUrl ? '📷 Foto' : '...');
+                const hasPhoto = parent.photoFile && parent.photoFile.length > 0;
+                const snippet = parent.text ? parent.text : (hasPhoto ? '📷 Foto' : '...');
                 return { found: true, text: snippet, authorId: parent.sentBy };
             }
             return { found: false, text: 'Messaggio non disponibile', authorId: null };
         },
 
-        // Invia un nuovo messaggio (testo e/o foto) alla chat corrente, gestendo anche eventuali risposte.
         async sendMessage() {
-            if (!this.newMessageText && !this.newPhotoUrl) return;
+            if (!this.newMessageText && !this.newPhotoFile) return;
             try {
                 const replyToId = this.replyingToMsg ? this.replyingToMsg.id : 0;
-                await api.sendMessage(this.myId, this.currentChatId, this.newMessageText, this.newPhotoUrl, replyToId, false);
+                await api.sendMessage(this.myId, this.currentChatId, this.newMessageText, this.newPhotoFile, replyToId, false);
+                
                 this.newMessageText = "";
-                this.newPhotoUrl = "";
+                this.newPhotoFile = null; 
+                if(this.$refs.msgFileInput) this.$refs.msgFileInput.value = "";
+
                 this.replyingToMsg = null;
                 await this.selectChat(this.currentChatId);
                 this.refresh(); 
@@ -195,28 +192,30 @@ export default {
             }
         },
 
-        // Inoltra un messaggio esistente a un altro utente creando (se necessario) una nuova conversazione.
         async forwardMsg(msg) {
             const targetUsername = prompt(`A quale utente (username) vuoi inoltrare questo messaggio?`);
             if (!targetUsername) return;
             try {
                 const res = await api.createConversation(this.myId, targetUsername);
                 const targetChatId = res.data.id || res.data.Id;
-                await api.sendMessage(this.myId, targetChatId, msg.text, msg.photoUrl, 0, true);
+                await api.sendMessage(this.myId, targetChatId, "", null, msg.id, true);
                 alert("Messaggio inoltrato!");
                 this.refresh();
             } catch (e) {
-                alert("Errore inoltro: " + e.toString());
+
+                if (e.response && e.response.status === 404) {
+                    alert("Errore inoltro: Utente destinatario non trovato.");
+                } else {
+                    alert("Errore inoltro: " + (e.response?.data?.message || e.toString()));
+                }
             }
         },
 
-        // Scorre automaticamente il contenitore dei messaggi fino all'ultimo elemento.
         scrollToBottom() {
             const container = this.$refs.messageContainer;
             if (container) container.scrollTop = container.scrollHeight;
         },
 
-        // Richiede la cancellazione di un messaggio previo conferma dell'utente.
         async deleteMsg(messageId) {
             if(!confirm("Eliminare messaggio?")) return;
             try {
@@ -225,8 +224,6 @@ export default {
             } catch (e) { alert(e.toString()); }
         },
 
-        // Gestisce il flusso di creazione di un nuovo gruppo: richiede nome e membri, crea il gruppo
-        // e aggiunge i partecipanti iterativamente.
         async createGroup() {
             const name = prompt("Nome gruppo:");
             if (!name) return;
@@ -234,30 +231,19 @@ export default {
             const membersStr = prompt("Inserisci gli username dei membri separati da virgola (es: luca, marco):");
             
             try { 
-                // Crea il gruppo (solo con il creatore inizialmente)
-                const res = await api.createGroup(this.myId, name, [this.myId], "");
-                const newGroupId = res.data.id || res.data.Id;
 
-                // Se ci sono altri membri, aggiungili uno alla volta
-                if (membersStr) {
-                    const members = membersStr.split(',').map(s => s.trim()).filter(s => s);
-                    for (const member of members) {
-                        try {
-                            await api.addGroupMember(newGroupId, member);
-                        } catch (e) {
-                            console.error("Errore aggiunta membro " + member, e);
-                        }
-                    }
-                }
-
+                const members = membersStr ? membersStr.split(',').map(s => s.trim()).filter(s => s) : [];
+          
+                await api.createGroup(this.myId, name, members, null);
+                
                 await this.refresh(); 
                 alert("Gruppo creato!");
             } catch (e) { 
-                alert("Errore creazione gruppo: " + e.toString()); 
+
+                alert("Errore creazione gruppo: " + (e.response?.data?.message || e.response?.data || e.toString())); 
             }
         },
 
-        // Avvia una nuova chat privata chiedendo lo username del destinatario.
         async startConversation() {
             const otherUsername = prompt("Username:");
             if (!otherUsername) return;
@@ -269,44 +255,33 @@ export default {
             } catch (e) { alert(e.toString()); }
         },
 
-        // Formatta una data ISO in una stringa leggibile (Giorno/Mese Ore:Minuti).
         formatDate(isoString) {
             if (!isoString || isoString.startsWith('0001')) return '';
             const d = new Date(isoString);
             return d.toLocaleString([], { 
-                day: '2-digit', 
-                month: '2-digit', 
-                hour: '2-digit', 
-                minute: '2-digit' 
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
             });
         },
 
-        // Gestisce l'aggiunta di una reazione chiamando l'API.
         async reactToMsg(msgId, emoji) {
             try {
                 await api.commentMessage(this.myId, this.currentChatId, msgId, emoji);
-                this.activeReactionMenuId = null; // Chiude il menu dopo la scelta
-                // Aggiorna la conversazione per vedere la nuova reazione
+                this.activeReactionMenuId = null; 
                 const res = await api.getConversation(this.myId, this.currentChatId);
                 this.messages = res.data.messages || res.data || [];
             } catch (e) {
-                console.error("Errore reazione:", e);
                 this.activeReactionMenuId = null;
             }
         },
 
-        // Rimuove la propria reazione da un messaggio.
         async removeReaction(msgId) {
             try {
                 await api.uncommentMessage(this.myId, this.currentChatId, msgId);
                 const res = await api.getConversation(this.myId, this.currentChatId);
                 this.messages = res.data.messages || res.data || [];
-            } catch (e) {
-                console.error("Errore rimozione reazione:", e);
-            }
+            } catch (e) { console.error(e); }
         },
 
-        // Toggle per mostrare/nascondere il menu delle emoticon per un dato messaggio.
         toggleReactionMenu(msgId) {
             if (this.activeReactionMenuId === msgId) {
                 this.activeReactionMenuId = null;
@@ -341,7 +316,7 @@ export default {
               @click="selectChat(chat.id)"
             >
               <div class="me-3">
-                <img v-if="chat.photoChat" :src="chat.photoChat" class="rounded-circle border-teal" style="width: 45px; height: 45px; object-fit: cover;">
+                <img v-if="getImageSrc(chat.photoChat)" :src="getImageSrc(chat.photoChat)" class="rounded-circle border-teal" style="width: 45px; height: 45px; object-fit: cover;">
                 <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 45px; height: 45px; color: #FAAB36;">
                   {{ (chat.name || '?').charAt(0).toUpperCase() }}
                 </div>
@@ -365,7 +340,7 @@ export default {
                 
         <div v-else class="d-flex flex-column h-100 w-100">
           <div class="d-flex align-items-center px-3 py-2 header-bg border-bottom-dark shadow-sm" style="flex: 0 0 auto;">
-            <img v-if="currentChatPhoto" :src="currentChatPhoto" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
+            <img v-if="getImageSrc(currentChatPhoto)" :src="getImageSrc(currentChatPhoto)" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
             <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold me-2" style="width: 35px; height: 35px; color: #FAAB36;">
               {{ (currentChatName || '?').charAt(0).toUpperCase() }}
             </div>
@@ -401,7 +376,9 @@ export default {
                       <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
                     </div>
                   </div>
-                  <div v-if="msg.photoUrl" class="mb-2"><img :src="msg.photoUrl" class="img-fluid rounded" style="max-height: 300px;"></div>
+                  <div v-if="getImageSrc(msg.photoFile)" class="mb-2">
+                    <img :src="getImageSrc(msg.photoFile)" class="img-fluid rounded" style="max-height: 300px;">
+                  </div>
                   <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text }}</p>
                                     
                   <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
@@ -451,8 +428,12 @@ export default {
               <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
               <button class="btn btn-teal" @click="sendMessage">➤</button>
             </div>
-            <div class="mt-2">
-              <input v-model="newPhotoUrl" type="url" class="form-control form-control-sm border-0 dark-input-sm" placeholder="URL Immagine (opzionale)">
+            <div class="mt-2 d-flex align-items-center">
+              <label class="btn btn-sm btn-outline-secondary me-2" style="cursor: pointer;">
+                📷 Allega Foto
+                <input ref="msgFileInput" type="file" class="d-none" accept="image/*" @change="onMessageFileChange">
+              </label>
+              <span v-if="newPhotoFile" class="small text-light">{{ newPhotoFile.name }}</span>
             </div>
           </div>
         </div>
@@ -469,8 +450,10 @@ export default {
           <div class="mb-3">
             <label class="form-label fw-bold text-light">Nome Gruppo</label>
             <input v-model="newGroupName" class="form-control dark-input mb-2" placeholder="Nome gruppo">
-            <label class="form-label fw-bold text-light">Foto Gruppo (URL)</label>
-            <input v-model="newGroupPhoto" class="form-control dark-input mb-2" placeholder="URL Foto">
+            
+            <label class="form-label fw-bold text-light">Foto Gruppo</label>
+            <input type="file" class="form-control dark-input mb-2" accept="image/*" @change="onGroupFileChange">
+            
             <button class="btn btn-sm btn-outline-teal w-100" @click="saveGroupSettings">Salva Modifiche</button>
           </div>
           <hr class="border-secondary">
@@ -482,8 +465,8 @@ export default {
                 class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center me-2 fw-bold" 
                 style="width: 32px; height: 32px; font-size: 0.8rem; color: #FAAB36;"
               >
-                {{ m.profilePhoto ? '' : m.username.charAt(0).toUpperCase() }}
-                <img v-if="m.profilePhoto" :src="m.profilePhoto" class="rounded-circle w-100 h-100 object-fit-cover">
+                <img v-if="getImageSrc(m.profilePhoto)" :src="getImageSrc(m.profilePhoto)" class="rounded-circle w-100 h-100 object-fit-cover">
+                <span v-else>{{ m.username.charAt(0).toUpperCase() }}</span>
               </div>
               <span>{{ m.username }}</span>
               <span v-if="m.id === myId" class="badge bg-teal ms-auto">Tu</span>
@@ -500,6 +483,7 @@ export default {
 </template>
 
 <style scoped>
+  
 /* GENERAL DARK THEME UTILS */
 .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .vh-100 { height: 100vh !important; }
@@ -539,7 +523,7 @@ export default {
 
 /* Reply Box */
 .reply-box { background-color: rgba(0,0,0,0.2); font-size: 0.85rem; }
-.reply-sent { border-color: #FAAB36 !important; } /* Yellow-Orange */
+.reply-sent { border-color: #FAAB36 !important; }
 .reply-received { border-color: #249EA0 !important; }
 
 /* Inputs */
@@ -555,7 +539,6 @@ export default {
 
 @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-/* Scrollbars */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: #005F60; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #249EA0; }

@@ -16,12 +16,12 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 			c.id, 
 			c.is_group, 
 			COALESCE(c.group_name, ''),
-			COALESCE(c.group_photo, ''),
+			c.group_photo,
 			(SELECT sent_at FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as last_msg_time,
 			(SELECT text FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as snippet_text,
-			(SELECT photo_url FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as snippet_photo,
+			(SELECT photo_file FROM messages WHERE chat_id = c.id ORDER BY sent_at DESC LIMIT 1) as snippet_photo,
 			COALESCE(u.username, ''),
-			COALESCE(u.profile_photo, '')
+			u.profile_photo
 		FROM chats c
 		JOIN members m1 ON c.id = m1.chat_id
 		LEFT JOIN members m2 ON c.id = m2.chat_id AND m2.user_id != m1.user_id
@@ -39,9 +39,13 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 
 	for rows.Next() {
 		var c ChatListItem
-		var groupName, groupPhoto string
+		var groupName string
+		var groupPhoto []byte
 		var lastTime sql.NullTime
-		var lastText, lastPhoto, otherUsername, otherPhoto sql.NullString
+		var lastText sql.NullString
+		var lastPhoto []byte
+		var otherUsername sql.NullString
+		var otherPhoto []byte
 
 		c.SnippetIcon = ""
 
@@ -55,7 +59,7 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 
 		if lastText.Valid && lastText.String != "" {
 			c.SnippetText = lastText.String
-		} else if lastPhoto.Valid && lastPhoto.String != "" {
+		} else if len(lastPhoto) > 0 {
 			c.SnippetText = "📷 Foto"
 		} else {
 			c.SnippetText = ""
@@ -70,11 +74,11 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 			} else {
 				c.Name = "Utente Sconosciuto"
 			}
-			if otherPhoto.Valid {
-				c.PhotoChat = otherPhoto.String
-			} else {
-				c.PhotoChat = ""
-			}
+			c.PhotoChat = otherPhoto
+		}
+
+		if c.PhotoChat == nil {
+			c.PhotoChat = []byte{}
 		}
 
 		chats = append(chats, c)
@@ -94,7 +98,7 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 	var chats []ChatListItem
 
 	var targetId int
-	var targetPhoto sql.NullString
+	var targetPhoto []byte
 	err := db.c.QueryRow("SELECT id, profile_photo FROM users WHERE username = ?", targetUsername).Scan(&targetId, &targetPhoto)
 	if err != nil {
 		return chats, nil
@@ -121,10 +125,9 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 		}
 
 		c.Name = targetUsername
-		if targetPhoto.Valid {
-			c.PhotoChat = targetPhoto.String
-		} else {
-			c.PhotoChat = ""
+		c.PhotoChat = targetPhoto
+		if c.PhotoChat == nil {
+			c.PhotoChat = []byte{}
 		}
 
 		chats = append(chats, c)
@@ -165,7 +168,7 @@ func (db *appdbimpl) CreateConversation(user1 int, user2 int) (ChatListItem, err
 	}
 
 	var otherName string
-	var otherPhoto sql.NullString
+	var otherPhoto []byte
 	err = db.c.QueryRow("SELECT username, profile_photo FROM users WHERE id = ?", user2).Scan(&otherName, &otherPhoto)
 	if err != nil {
 		otherName = "Utente"
@@ -175,11 +178,9 @@ func (db *appdbimpl) CreateConversation(user1 int, user2 int) (ChatListItem, err
 	chat.IsGroup = false
 	chat.SnippetText = "Nuova chat"
 	chat.Name = otherName
-
-	if otherPhoto.Valid {
-		chat.PhotoChat = otherPhoto.String
-	} else {
-		chat.PhotoChat = ""
+	chat.PhotoChat = otherPhoto
+	if chat.PhotoChat == nil {
+		chat.PhotoChat = []byte{}
 	}
 
 	return chat, nil
@@ -197,7 +198,7 @@ func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) 
 
 	query := `
 		SELECT 
-			m.id, m.chat_id, m.user_id, m.text, COALESCE(m.photo_url, ''), m.sent_at, m.is_read,
+			m.id, m.chat_id, m.user_id, m.text, m.photo_file, m.sent_at, m.is_read,
 			COALESCE(m.reply_to_message_id, 0), m.is_forward,
 			u.username 
 		FROM messages m
@@ -216,8 +217,12 @@ func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) 
 
 		var m Message
 
-		if err := rows.Scan(&m.Id, &m.ChatId, &m.SentBy, &m.Text, &m.PhotoUrl, &m.SentAt, &m.Checkmark, &m.ReplyTo, &m.IsForward, &m.SenderName); err != nil {
+		if err := rows.Scan(&m.Id, &m.ChatId, &m.SentBy, &m.Text, &m.PhotoFile, &m.SentAt, &m.Checkmark, &m.ReplyTo, &m.IsForward, &m.SenderName); err != nil {
 			continue
+		}
+
+		if m.PhotoFile == nil {
+			m.PhotoFile = []byte{}
 		}
 
 		m.Reactions = make([]Reaction, 0)

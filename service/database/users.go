@@ -27,7 +27,7 @@ func (db *appdbimpl) UserLogin(username string) (int, bool, error) {
 		return 0, false, err
 	}
 
-	res, err := db.c.Exec("INSERT INTO users (username, profile_photo, token) VALUES (?, '', '')", username)
+	res, err := db.c.Exec("INSERT INTO users (username, profile_photo, token) VALUES (?, NULL, '')", username)
 	if err != nil {
 		return 0, false, err
 	}
@@ -60,9 +60,13 @@ func (db *appdbimpl) CheckToken(token string) (int, error) {
 func (db *appdbimpl) GetUserByUsername(username string) (User, error) {
 
 	var u User
+
 	err := db.c.QueryRow("SELECT id, username, profile_photo FROM users WHERE username = ?", username).Scan(&u.Id, &u.Username, &u.ProfilePhoto)
 	if err != nil {
 		return u, err
+	}
+	if u.ProfilePhoto == nil {
+		u.ProfilePhoto = []byte{}
 	}
 	return u, nil
 }
@@ -78,19 +82,25 @@ func (db *appdbimpl) SetMyUsername(userId int, newUsername string) (User, error)
 	}
 
 	err = db.c.QueryRow("SELECT id, username, profile_photo FROM users WHERE id = ?", userId).Scan(&u.Id, &u.Username, &u.ProfilePhoto)
+	if u.ProfilePhoto == nil {
+		u.ProfilePhoto = []byte{}
+	}
 	return u, err
 }
 
 // SetProfilePhoto aggiorna l'URL della foto profilo di un utente.
 // Simile a SetMyUsername, esegue l'update e restituisce l'oggetto User aggiornato.
-func (db *appdbimpl) SetProfilePhoto(userId int, photoURL string) (User, error) {
+func (db *appdbimpl) SetProfilePhoto(userId int, photoFile []byte) (User, error) {
 	var u User
 
-	_, err := db.c.Exec("UPDATE users SET profile_photo = ? WHERE id = ?", photoURL, userId)
+	_, err := db.c.Exec("UPDATE users SET profile_photo = ? WHERE id = ?", photoFile, userId)
 	if err != nil {
 		return u, err
 	}
 
 	err = db.c.QueryRow("SELECT id, username, profile_photo FROM users WHERE id = ?", userId).Scan(&u.Id, &u.Username, &u.ProfilePhoto)
+	if u.ProfilePhoto == nil {
+		u.ProfilePhoto = []byte{}
+	}
 	return u, err
 }

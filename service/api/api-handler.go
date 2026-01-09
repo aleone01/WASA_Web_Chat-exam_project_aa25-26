@@ -41,5 +41,8 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.PUT("/groups/:groupId/name", rt.wrap(rt.setGroupName))
 	rt.router.PUT("/groups/:groupId/photo", rt.wrap(rt.setGroupPhoto))
 
+	// Mappa l'URL /images/* alla cartella locale /tmp/wasa_images
+	rt.router.ServeFiles("/images/*filepath", http.Dir("/tmp/wasa_images"))
+
 	return rt.router
 }

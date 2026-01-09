@@ -8,8 +8,16 @@ import (
 // CreateGroup crea un nuovo gruppo di conversazione.
 // Inserisce i metadati del gruppo (nome, foto) nella tabella chats e popola la tabella members
 // associando il creatore e la lista degli altri membri iniziali al nuovo gruppo.
-func (db *appdbimpl) CreateGroup(name string, photo string, members []int, creatorId int) (Group, error) {
+func (db *appdbimpl) CreateGroup(name string, photo []byte, members []int, creatorId int) (Group, error) {
 	var g Group
+
+	for _, memberId := range members {
+		var exists int
+		err := db.c.QueryRow("SELECT id FROM users WHERE id = ?", memberId).Scan(&exists)
+		if err != nil {
+			return g, errors.New("Gruppo non creato: uno o più membri non esistono")
+		}
+	}
 
 	res, err := db.c.Exec("INSERT INTO chats (is_group, group_name, group_photo) VALUES (TRUE, ?, ?)", name, photo)
 	if err != nil {
@@ -84,9 +92,10 @@ func (db *appdbimpl) SetGroupName(groupId int, newName string) (Group, error) {
 
 // SetGroupPhoto aggiorna l'immagine rappresentativa di un gruppo.
 // Aggiorna il campo group_photo nel database e restituisce i dati aggiornati del gruppo.
-func (db *appdbimpl) SetGroupPhoto(groupId int, photoURL string) (Group, error) {
+func (db *appdbimpl) SetGroupPhoto(groupId int, photoFile []byte) (Group, error) {
 
-	_, err := db.c.Exec("UPDATE chats SET group_photo = ? WHERE id = ? AND is_group = TRUE", photoURL, groupId)
+	// Aggiornamento con BLOB
+	_, err := db.c.Exec("UPDATE chats SET group_photo = ? WHERE id = ? AND is_group = TRUE", photoFile, groupId)
 	if err != nil {
 		return Group{}, err
 	}
@@ -113,9 +122,13 @@ func (db *appdbimpl) GetGroupById(groupId int) (Group, error) {
 	var g Group
 	g.Id = groupId
 
-	err := db.c.QueryRow("SELECT group_name, COALESCE(group_photo, '') FROM chats WHERE id = ? AND is_group = TRUE", groupId).Scan(&g.GroupName, &g.GroupPhoto)
+	err := db.c.QueryRow("SELECT group_name, group_photo FROM chats WHERE id = ? AND is_group = TRUE", groupId).Scan(&g.GroupName, &g.GroupPhoto)
 	if err != nil {
 		return g, err
+	}
+
+	if g.GroupPhoto == nil {
+		g.GroupPhoto = []byte{}
 	}
 
 	rows, err := db.c.Query("SELECT user_id FROM members WHERE chat_id = ?", groupId)
@@ -147,7 +160,7 @@ func (db *appdbimpl) GetGroupMembers(groupId int) ([]User, error) {
 	users := make([]User, 0)
 
 	query := `
-		SELECT u.id, u.username, COALESCE(u.profile_photo, '')
+		SELECT u.id, u.username, u.profile_photo
 		FROM members m
 		JOIN users u ON m.user_id = u.id
 		WHERE m.chat_id = ?
@@ -161,6 +174,9 @@ func (db *appdbimpl) GetGroupMembers(groupId int) ([]User, error) {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.Id, &u.Username, &u.ProfilePhoto); err == nil {
+			if u.ProfilePhoto == nil {
+				u.ProfilePhoto = []byte{}
+			}
 			users = append(users, u)
 		}
 	}

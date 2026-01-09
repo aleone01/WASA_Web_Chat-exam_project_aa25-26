@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -9,10 +10,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// createGroup permette a un utente autenticato di creare un nuovo gruppo di conversazione.
-// La funzione estrae il token di autenticazione per identificare il creatore, analizza il corpo della richiesta JSON
-// per ottenere il nome del gruppo, la foto e la lista iniziale dei membri, e infine invoca il metodo del database
-// per persistere il nuovo gruppo. Restituisce l'oggetto gruppo creato o un errore appropriato.
+// createGroup permette a un utente autenticato di creare un nuovo gruppo.
+// Accetta una lista di username in "membersList". Verifica che tutti esistano prima di creare il gruppo.
 func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	token := r.Header.Get("Authorization")
@@ -28,20 +27,60 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	var reqBody struct {
-		Name    string `json:"groupname"`
-		Photo   string `json:"groupPhoto"`
-		Members []int  `json:"membersList"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
+	// Parsing del form (max 10MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "Errore form data")
 		return
 	}
 
-	g, err := rt.db.CreateGroup(reqBody.Name, reqBody.Photo, reqBody.Members, userId)
+	// Recupero dati testuali
+	groupName := r.FormValue("groupname")
+	if groupName == "" {
+		rt.sendError(w, http.StatusBadRequest, 400, "Nome gruppo mancante")
+		return
+	}
+
+	// Parsing della lista membri
+	membersStr := r.FormValue("membersList")
+	var memberUsernames []string
+	if membersStr != "" {
+		if err := json.Unmarshal([]byte(membersStr), &memberUsernames); err != nil {
+			rt.sendError(w, http.StatusBadRequest, 400, "Formato membersList non valido (atteso JSON array di stringhe)")
+			return
+		}
+	}
+
+	// Risoluzione degli Username in ID e validazione esistenza
+	var memberIds []int
+	for _, username := range memberUsernames {
+
+		u, err := rt.db.GetUserByUsername(username)
+		if err != nil {
+			rt.sendError(w, http.StatusBadRequest, 400, "Utente non esistente: "+username)
+			return
+		}
+		if u.Id == userId {
+			continue
+		}
+		memberIds = append(memberIds, u.Id)
+	}
+
+	// Gestione foto opzionale
+	var photoFile []byte
+	file, _, err := r.FormFile("groupPhotoFile")
+	if err == nil {
+		defer file.Close()
+		photoFile, err = io.ReadAll(file)
+		if err != nil {
+			rt.sendError(w, http.StatusInternalServerError, 500, "Errore lettura foto")
+			return
+		}
+	}
+
+	// Creazione su DB passando gli ID validati
+	g, err := rt.db.CreateGroup(groupName, photoFile, memberIds, userId)
 	if err != nil {
-		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione")
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore creazione gruppo")
 		return
 	}
 
@@ -50,9 +89,7 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// addToGroup consente l'aggiunta di nuovi membri a un gruppo esistente.
-// Verifica preliminarmente che l'utente che effettua la richiesta sia già un membro del gruppo (controllo dei permessi).
-// Se autorizzato, decodifica la lista dei nuovi membri dal corpo della richiesta e aggiorna il database.
+// addToGroup
 func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
@@ -91,9 +128,7 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// leaveGroup gestisce la richiesta di un utente di abbandonare un gruppo specifico.
-// Identifica l'utente tramite il token di autenticazione e invoca la logica del database per rimuovere
-// l'associazione tra l'utente e il gruppo indicato nell'URL.
+// leaveGroup
 func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
@@ -114,9 +149,7 @@ func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setGroupName permette di modificare il nome di un gruppo esistente.
-// Esegue un controllo di appartenenza per assicurarsi che solo i membri del gruppo possano modificarne le proprietà.
-// In caso di successo, aggiorna il nome nel database e restituisce l'oggetto gruppo aggiornato.
+// setGroupName
 func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
@@ -149,9 +182,7 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 	_ = json.NewEncoder(w).Encode(g)
 }
 
-// setGroupPhoto consente di aggiornare l'immagine (o il riferimento all'immagine) di un gruppo.
-// Similmente alle altre operazioni di modifica, verifica che il richiedente sia membro del gruppo prima di
-// procedere con l'aggiornamento nel database.
+// setGroupPhoto
 func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))
@@ -170,21 +201,32 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	var reqBody struct {
-		Photo string `json:"groupPhoto"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
+	// Parsing form
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "Errore form")
 		return
 	}
 
-	g, _ := rt.db.SetGroupPhoto(groupId, reqBody.Photo)
+	file, _, err := r.FormFile("groupPhotoFile")
+	if err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "File mancante")
+		return
+	}
+	defer file.Close()
+
+	// Leggi byte
+	photoFile, err := io.ReadAll(file)
+	if err != nil {
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore lettura file")
+		return
+	}
+
+	g, _ := rt.db.SetGroupPhoto(groupId, photoFile)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(g)
-
 }
 
+// getGroupMembers
 func (rt *_router) getGroupMembers(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	groupId, _ := strconv.Atoi(ps.ByName("groupId"))

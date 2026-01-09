@@ -25,6 +25,9 @@ WORKDIR /root/
 # Copia l'eseguibile compilato
 COPY --from=builder /app/webapi .
 
+# Assegna i permessi di esecuzione al file binario
+RUN chmod +x ./webapi
+
 # Espone la porta API
 EXPOSE 3000
 

@@ -8,11 +8,11 @@ import (
 )
 
 // User rappresenta la struttura dati di un utente registrato nel sistema.
-// Contiene l'identificativo univoco, il nome utente e l'URL (opzionale) della foto profilo.
+// Contiene l'identificativo univoco, il nome utente e il file (opzionale) della foto profilo.
 type User struct {
 	Id           int    `json:"id"`
 	Username     string `json:"username"`
-	ProfilePhoto string `json:"profilePhoto"`
+	ProfilePhoto []byte `json:"profilePhoto"`
 }
 
 // ChatListItem definisce il modello per visualizzare l'anteprima di una conversazione nella lista delle chat.
@@ -21,7 +21,7 @@ type ChatListItem struct {
 	Id          int       `json:"id"`
 	Name        string    `json:"name,omitempty"`
 	IsGroup     bool      `json:"isGroup"`
-	PhotoChat   string    `json:"photoChat"`
+	PhotoChat   []byte    `json:"photoChat"`
 	LastMessage time.Time `json:"lastMessage"`
 	SnippetText string    `json:"snippetText"`
 	SnippetIcon string    `json:"snippetIcon"`
@@ -36,7 +36,7 @@ type Message struct {
 	Text       string     `json:"text"`
 	SentAt     time.Time  `json:"sentAt"`
 	SentBy     int        `json:"sentBy"`
-	PhotoUrl   string     `json:"photoUrl,omitempty"`
+	PhotoFile  []byte     `json:"photoFile,omitempty"`
 	Checkmark  bool       `json:"checkmark"`
 	ReplyTo    int        `json:"replyTo"`
 	IsForward  bool       `json:"isForward"`
@@ -56,7 +56,7 @@ type Reaction struct {
 type Group struct {
 	Id          int    `json:"id"`
 	GroupName   string `json:"groupname"`
-	GroupPhoto  string `json:"groupPhoto"`
+	GroupPhoto  []byte `json:"groupPhoto"`
 	MembersList []int  `json:"membersList"`
 }
 
@@ -69,21 +69,21 @@ type AppDatabase interface {
 	UserLogin(username string) (int, bool, error)
 	GetUserByUsername(username string) (User, error)
 	SetMyUsername(userId int, newUsername string) (User, error)
-	SetProfilePhoto(userId int, photoURL string) (User, error)
+	SetProfilePhoto(userId int, photoFile []byte) (User, error)
 	CreateConversation(user1 int, user2 int) (ChatListItem, error)
 	GetMyConversations(userId int) ([]ChatListItem, error)
 	GetConversation(userId int, chatId int) ([]Message, error)
 	GetChatWithUser(userId int, username string) ([]ChatListItem, error)
-	CreateMessage(chatId int, userId int, text string, photoUrl string, sentAt time.Time, replyTo int, isForward bool) (Message, error)
+	CreateMessage(chatId int, userId int, text string, photoFile []byte, sentAt time.Time, replyTo int, isForward bool) (Message, error) // Modificato input
 	AddReaction(messageId int, userId int, emoticon string) error
 	RemoveReaction(messageId int, userId int) error
 	DeleteMessage(messageId int, userId int) error
 	GetMessage(messageId int) (Message, error)
-	CreateGroup(name string, photo string, members []int, creatorId int) (Group, error)
+	CreateGroup(name string, photo []byte, members []int, creatorId int) (Group, error)
 	AddGroupMembers(groupId int, newMembers []int) (Group, error)
 	LeaveGroup(groupId int, userId int) error
 	SetGroupName(groupId int, newName string) (Group, error)
-	SetGroupPhoto(groupId int, photoURL string) (Group, error)
+	SetGroupPhoto(groupId int, photoFile []byte) (Group, error)
 	CheckGroupMembership(groupId int, userId int) (bool, error)
 	GetGroupById(groupId int) (Group, error)
 	GetGroupMembers(groupId int) ([]User, error)
@@ -110,7 +110,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 	(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL UNIQUE,
-		profile_photo TEXT,
+		profile_photo BLOB,
 		token TEXT
 	);
 
@@ -119,7 +119,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		is_group BOOLEAN DEFAULT FALSE,
 		group_name TEXT,
-		group_photo TEXT
+		group_photo BLOB
 	);
 
 	CREATE TABLE IF NOT EXISTS members 
@@ -137,7 +137,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 		chat_id INTEGER NOT NULL,
 		user_id INTEGER NOT NULL,
 		text TEXT,
-		photo_url TEXT,
+		photo_file BLOB,
 		sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		is_read BOOLEAN DEFAULT FALSE,
 		reply_to_message_id INTEGER,

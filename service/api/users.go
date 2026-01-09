@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -44,8 +45,6 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 }
 
 // setMyPhoto gestisce l'aggiornamento dell'immagine del profilo dell'utente.
-// Accetta un URL nel corpo della richiesta, verifica che non sia vuoto e aggiorna il riferimento fotografico
-// associato all'utente nel database.
 func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -54,21 +53,30 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	var reqBody struct {
-		Photo string `json:"photo"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
+	// Parsing del form multipart (limite 10MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "Errore form data o file troppo grande")
 		return
 	}
 
-	if len(reqBody.Photo) == 0 {
-		rt.sendError(w, http.StatusBadRequest, 400, "URL foto mancante")
+	// Recupero del file
+	file, _, err := r.FormFile("photo")
+	if err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "File 'photo' mancante")
+		return
+	}
+	defer file.Close()
+
+	// Lettura del file in []byte
+	photoFile, err := io.ReadAll(file)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("Errore lettura immagine")
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore interno lettura file")
 		return
 	}
 
-	user, err := rt.db.SetProfilePhoto(userId, reqBody.Photo)
+	// Aggiornamento DB passando i byte
+	user, err := rt.db.SetProfilePhoto(userId, photoFile)
 	if err != nil {
 		rt.sendError(w, http.StatusInternalServerError, 500, "Errore DB")
 		return

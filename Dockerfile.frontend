@@ -4,11 +4,11 @@ FROM node:lts-alpine AS build-stage
 WORKDIR /app
 
 # Copia package.json e installa dipendenze
-COPY package*.json ./
+COPY webui/package*.json ./
 RUN npm install
 
 # Copia il codice sorgente del frontend
-COPY . .
+COPY webui/ .
 
 # Esegue la build (crea la cartella dist)
 RUN npm run build

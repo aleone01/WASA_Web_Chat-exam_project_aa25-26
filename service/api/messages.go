@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,9 +11,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// sendMessage gestisce l'invio di un nuovo messaggio all'interno di una specifica chat.
-// La funzione verifica l'autenticazione dell'utente, decodifica il payload JSON (testo, foto, riferimenti di risposta o inoltro)
-// e registra il messaggio nel database con il timestamp corrente.
+// sendMessage gestisce l'invio di un nuovo messaggio.
 func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -22,21 +21,44 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	var reqBody struct {
-		Text      string `json:"text"`
-		Photo     string `json:"photoUrl"`
-		ReplyTo   int    `json:"replyTo"`
-		IsForward bool   `json:"isForward"`
+	// Parsing multipart (max 10 MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		rt.sendError(w, http.StatusBadRequest, 400, "Errore dati form (usa multipart/form-data)")
+		return
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-		rt.sendError(w, http.StatusBadRequest, 400, "JSON non valido")
+	// Recupero campi testuali dal form
+	text := r.FormValue("text")
+	replyTo, _ := strconv.Atoi(r.FormValue("replyTo"))
+	isForward, _ := strconv.ParseBool(r.FormValue("isForward"))
+
+	// Gestione Foto (opzionale)
+	var photoFile []byte
+
+	// Proviamo a recuperare il file
+	file, _, err := r.FormFile("file")
+	if err == nil {
+		// Se il file c'è, lo leggiamo
+		defer file.Close()
+		photoFile, err = io.ReadAll(file)
+		if err != nil {
+			rt.sendError(w, http.StatusInternalServerError, 500, "Errore lettura file")
+			return
+		}
+	} else if err != http.ErrMissingFile {
+		// Se l'errore è diverso da "file mancante", allora è un problema reale
+		rt.sendError(w, http.StatusInternalServerError, 500, "Errore form file")
+		return
+	}
+
+	if text == "" && len(photoFile) == 0 {
+		rt.sendError(w, http.StatusBadRequest, 400, "Messaggio vuoto")
 		return
 	}
 
 	sentAt := time.Now()
 
-	msg, err := rt.db.CreateMessage(chatId, userId, reqBody.Text, reqBody.Photo, sentAt, reqBody.ReplyTo, reqBody.IsForward)
+	msg, err := rt.db.CreateMessage(chatId, userId, text, photoFile, sentAt, replyTo, isForward)
 	if err != nil {
 		rt.sendError(w, http.StatusInternalServerError, 500, "Errore nel salvataggio")
 		return
@@ -47,9 +69,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 	_ = json.NewEncoder(w).Encode(msg)
 }
 
-// commentMessage consente a un utente di aggiungere una reazione (emoticon) a un messaggio esistente.
-// Identifica il messaggio e l'utente dai parametri e dal token, quindi aggiorna lo stato del messaggio nel database
-// aggiungendo la reazione specificata.
+// commentMessage aggiunge reazione
 func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -75,8 +95,7 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 	w.WriteHeader(http.StatusCreated)
 }
 
-// uncommentMessage permette a un utente di rimuovere una reazione precedentemente aggiunta a un messaggio.
-// Esegue l'operazione inversa di commentMessage, eliminando l'associazione tra l'utente, il messaggio e l'emoticon nel database.
+// uncommentMessage rimuove reazione
 func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -94,9 +113,7 @@ func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps h
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// deleteMessage gestisce la cancellazione di un messaggio inviato.
-// La funzione verifica rigorosamente che l'utente richiedente sia l'autore del messaggio prima di procedere
-// con l'eliminazione dal database. Restituisce un errore 403 Forbidden se si tenta di cancellare messaggi altrui.
+// deleteMessage cancella messaggio
 func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -118,9 +135,7 @@ func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps http
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// forwardMessage gestisce l'inoltro di un messaggio esistente verso una o più chat di destinazione.
-// Recupera il contenuto del messaggio originale e crea nuove istanze di messaggio per ogni destinatario specificato
-// nel corpo della richiesta, marcandoli come "inoltrati".
+// forwardMessage inoltra messaggio
 func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 
 	userId, _ := strconv.Atoi(ps.ByName("userId"))
@@ -148,7 +163,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 	forwardTime := time.Now()
 
 	for _, tid := range reqBody.Targets {
-		_, _ = rt.db.CreateMessage(tid, userId, originalMsg.Text, originalMsg.PhotoUrl, forwardTime, 0, true)
+		_, _ = rt.db.CreateMessage(tid, userId, originalMsg.Text, originalMsg.PhotoFile, forwardTime, 0, true)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

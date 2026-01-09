@@ -1,22 +1,18 @@
 <script>
 import api from '@/services/api'
 
-// Componente per la gestione del profilo utente.
-// Consente all'utente autenticato di modificare il proprio username
-// e di aggiornare l'URL della propria foto profilo.
 export default {
     data() {
         return {
             userId: parseInt(sessionStorage.getItem('userId')),
             username: "",
-            photoUrl: "",
+            photoFile: null,
             msg: null,     
             error: null,   
             loading: false
         }
     },
     methods: {
-        // Valida e invia la richiesta di aggiornamento del nome utente.
         async updateUsername() {
             if (!this.username || this.username.length < 3 || this.username.length > 16) {
                 this.error = "L'username deve essere tra 3 e 16 caratteri.";
@@ -32,15 +28,25 @@ export default {
                 this.msg = "Username aggiornato con successo!";
                 this.username = ""; 
             } catch (e) {
-                this.error = "Errore aggiornamento username: " + (e.response?.data?.message || e.toString());
+                if (e.response && e.response.data) {
+                    alert("Errore: " + e.response.data); 
+                } else {
+                    alert("Errore aggiornamento username: Impossibile contattare il server.");
+                }
             }
             this.loading = false;
         },
 
-        // Valida e invia la richiesta di aggiornamento della foto profilo.
+        // Gestione del cambio file
+        onFileChange(e) {
+            const files = e.target.files || e.dataTransfer.files;
+            if (!files.length) return;
+            this.photoFile = files[0];
+        },
+
         async updatePhoto() {
-            if (!this.photoUrl) {
-                this.error = "Inserisci un URL valido.";
+            if (!this.photoFile) {
+                this.error = "Seleziona un file.";
                 return;
             }
 
@@ -49,9 +55,10 @@ export default {
             this.msg = null;
 
             try {
-                await api.setMyPhoto(this.userId, this.photoUrl);
+                await api.setMyPhoto(this.userId, this.photoFile);
                 this.msg = "Foto aggiornata con successo!";
-                this.photoUrl = ""; 
+                this.photoFile = null; 
+                if (this.$refs.fileInput) this.$refs.fileInput.value = "";
             } catch (e) {
                 this.error = "Errore aggiornamento foto: " + (e.response?.data?.message || e.toString());
             }
@@ -93,14 +100,11 @@ export default {
           </div>
           <div class="card-body">
             <div class="mb-3">
-              <label class="form-label text-light">URL Nuova Foto</label>
-              <input v-model="photoUrl" type="url" class="form-control dark-input" placeholder="https://example.com/foto.jpg">
-            </div>
-            <div v-if="photoUrl" class="mb-3 text-center">
-              <img :src="photoUrl" class="rounded-circle border-teal" style="width: 80px; height: 80px; object-fit: cover;" alt="Anteprima">
+              <label class="form-label text-light">Carica Nuova Foto</label>
+              <input ref="fileInput" type="file" class="form-control dark-input" accept="image/*" @change="onFileChange">
             </div>
             <button class="btn btn-orange" :disabled="loading" @click="updatePhoto">
-              {{ loading ? 'Attendi...' : 'Aggiorna Foto' }}
+              {{ loading ? 'Attendi...' : 'Carica Foto' }}
             </button>
           </div>
         </div>
@@ -110,44 +114,11 @@ export default {
 </template>
 
 <style scoped>
-.dark-card {
-    background-color: #1e1e1e;
-    border: 1px solid #333;
-}
-
-.dark-input {
-    background-color: #2d2d2d;
-    border: 1px solid #444;
-    color: white;
-}
-.dark-input:focus {
-    background-color: #333;
-    color: white;
-    border-color: #249EA0;
-    box-shadow: 0 0 0 0.25rem rgba(36, 158, 160, 0.25);
-}
-
-.btn-teal {
-    background-color: #249EA0;
-    color: white;
-    border: none;
-}
-.btn-teal:hover {
-    background-color: #008083;
-    color: white;
-}
-
-.btn-orange {
-    background-color: #FD5901; /* Arancio/Rosso palette */
-    color: white;
-    border: none;
-}
-.btn-orange:hover {
-    background-color: #F78104;
-    color: white;
-}
-
-.border-teal {
-    border: 2px solid #249EA0;
-}
+.dark-card { background-color: #1e1e1e; border: 1px solid #333; }
+.dark-input { background-color: #2d2d2d; border: 1px solid #444; color: white; }
+.dark-input:focus { background-color: #333; color: white; border-color: #249EA0; box-shadow: 0 0 0 0.25rem rgba(36, 158, 160, 0.25); }
+.btn-teal { background-color: #249EA0; color: white; border: none; }
+.btn-teal:hover { background-color: #008083; color: white; }
+.btn-orange { background-color: #FD5901; color: white; border: none; }
+.btn-orange:hover { background-color: #F78104; color: white; }
 </style>
