@@ -20,7 +20,7 @@ RUN go build -o webapi ./cmd/webapi
 # Immagine Finale
 FROM alpine:latest
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copia l'eseguibile compilato
 COPY --from=builder /app/webapi .

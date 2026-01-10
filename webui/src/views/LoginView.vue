@@ -49,8 +49,15 @@ export default {
             return;
         }
         
+        sessionStorage.clear();
+        const savedPhoto = localStorage.getItem(`wasa_photo_${userId}`);
+        if (savedPhoto) {
+            sessionStorage.setItem('userPhoto', savedPhoto);
+        }
+
         sessionStorage.setItem('token', userId); 
         sessionStorage.setItem('userId', userId);
+        sessionStorage.setItem('username', this.username);
         
         this.$router.push('/');
       } catch (e) {

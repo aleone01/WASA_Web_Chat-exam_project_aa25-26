@@ -5,14 +5,24 @@ export default {
     data() {
         return {
             userId: parseInt(sessionStorage.getItem('userId')),
-            username: "",
+            username: sessionStorage.getItem('username') || "", 
+            currentPhoto: sessionStorage.getItem('userPhoto'),  
             photoFile: null,
             msg: null,     
             error: null,   
             loading: false
         }
     },
+
     methods: {
+
+        // Helper per visualizzare l'immagine base64
+        getImageSrc(base64Data) {
+            if (!base64Data) return null;
+            if (base64Data.startsWith('data:')) return base64Data;
+            return `data:image/jpeg;base64,${base64Data}`;
+        },
+
         async updateUsername() {
             if (!this.username || this.username.length < 3 || this.username.length > 16) {
                 this.error = "L'username deve essere tra 3 e 16 caratteri.";
@@ -25,13 +35,13 @@ export default {
 
             try {
                 await api.setMyUserName(this.userId, this.username);
+                sessionStorage.setItem('username', this.username);
                 this.msg = "Username aggiornato con successo!";
-                this.username = ""; 
             } catch (e) {
                 if (e.response && e.response.data) {
-                    alert("Errore: " + e.response.data); 
+                    this.error = "Errore: " + (e.response.data.message || e.response.data);
                 } else {
-                    alert("Errore aggiornamento username: Impossibile contattare il server.");
+                    this.error = "Errore aggiornamento username: " + e.message;
                 }
             }
             this.loading = false;
@@ -55,10 +65,23 @@ export default {
             this.msg = null;
 
             try {
+
                 await api.setMyPhoto(this.userId, this.photoFile);
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64String = e.target.result;
+                    this.currentPhoto = base64String;
+                    const rawBase64 = base64String.split(',')[1];
+                    sessionStorage.setItem('userPhoto', rawBase64);
+                    localStorage.setItem(`wasa_photo_${this.userId}`, rawBase64);
+                };
+                reader.readAsDataURL(this.photoFile);
+
                 this.msg = "Foto aggiornata con successo!";
                 this.photoFile = null; 
                 if (this.$refs.fileInput) this.$refs.fileInput.value = "";
+                
             } catch (e) {
                 this.error = "Errore aggiornamento foto: " + (e.response?.data?.message || e.toString());
             }
@@ -83,7 +106,7 @@ export default {
           </div>
           <div class="card-body">
             <div class="mb-3">
-              <label class="form-label text-light">Nuovo Username</label>
+              <label class="form-label text-light">Username Attuale</label>
               <input v-model="username" type="text" class="form-control dark-input" placeholder="Min 3, Max 16 caratteri" minlength="3" maxlength="16">
             </div>
             <button class="btn btn-teal" :disabled="loading" @click="updateUsername">
@@ -98,12 +121,21 @@ export default {
           <div class="card-header text-white" style="background-color: #FD5901;">
             Cambia Foto Profilo
           </div>
-          <div class="card-body">
+          <div class="card-body text-center">
+            
             <div class="mb-3">
-              <label class="form-label text-light">Carica Nuova Foto</label>
-              <input ref="fileInput" type="file" class="form-control dark-input" accept="image/*" @change="onFileChange">
+                <p class="text-light mb-1">Foto Attuale:</p>
+                <img v-if="getImageSrc(currentPhoto)" :src="getImageSrc(currentPhoto)" class="rounded-circle border border-light" style="width: 100px; height: 100px; object-fit: cover;">
+                <div v-else class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white" style="width: 100px; height: 100px;">
+                    <span style="font-size: 2rem;">{{ (username || 'U').charAt(0).toUpperCase() }}</span>
+                </div>
             </div>
-            <button class="btn btn-orange" :disabled="loading" @click="updatePhoto">
+
+            <div class="mb-3 text-start">
+              <label class="form-label text-light">Carica Nuova Foto</label>
+              <input type="file" ref="fileInput" class="form-control dark-input" accept="image/*" @change="onFileChange">
+            </div>
+            <button class="btn btn-orange w-100" :disabled="loading" @click="updatePhoto">
               {{ loading ? 'Attendi...' : 'Carica Foto' }}
             </button>
           </div>

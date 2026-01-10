@@ -106,9 +106,8 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 	}
 
 	msgs, err := rt.db.GetConversation(userId, chatId)
-
 	if err != nil {
-		rt.sendError(w, http.StatusForbidden, 403, "Errore DB")
+		rt.sendError(w, http.StatusForbidden, 403, "Errore DB o Accesso Negato")
 		return
 	}
 

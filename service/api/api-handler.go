@@ -10,7 +10,7 @@ import (
 func (rt *_router) Handler() http.Handler {
 
 	// rotta di liveness
-	rt.router.GET("/liveness", rt.liveness) // Definito nel tuo liveness.go
+	rt.router.GET("/liveness", rt.liveness)
 
 	// rotta di login
 	rt.router.POST("/login", rt.wrap(rt.doLogin))

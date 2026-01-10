@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -38,17 +39,32 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 	// Proviamo a recuperare il file
 	file, _, err := r.FormFile("file")
 	if err == nil {
-		// Se il file c'è, lo leggiamo
 		defer file.Close()
 		photoFile, err = io.ReadAll(file)
 		if err != nil {
 			rt.sendError(w, http.StatusInternalServerError, 500, "Errore lettura file")
 			return
 		}
-	} else if err != http.ErrMissingFile {
-		// Se l'errore è diverso da "file mancante", allora è un problema reale
+	} else if !errors.Is(err, http.ErrMissingFile) {
+
 		rt.sendError(w, http.StatusInternalServerError, 500, "Errore form file")
 		return
+	}
+
+	// Se è un messaggio inoltrato, recuperiamo il messaggio originale
+	if isForward && replyTo > 0 {
+		originalMsg, err := rt.db.GetMessage(replyTo)
+		if err == nil {
+			if text == "" {
+				text = originalMsg.Text
+			}
+			if len(photoFile) == 0 {
+				photoFile = originalMsg.PhotoFile
+			}
+		} else {
+			rt.sendError(w, http.StatusNotFound, 404, "Messaggio originale da inoltrare non trovato")
+			return
+		}
 	}
 
 	if text == "" && len(photoFile) == 0 {

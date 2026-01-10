@@ -50,6 +50,12 @@ export default {
         });
 	},
 
+    async forwardMessage(userId, chatId, messageId, toUsers) {
+        return axios.post(`/users/${userId}/chats/${chatId}/messages/${messageId}/forward`, {
+            targets: toUsers
+        });
+    },
+
 	async deleteMessage(userId, chatId, messageId) {
 		return axios.delete(`/users/${userId}/chats/${chatId}/messages/${messageId}`);
 	},
@@ -83,9 +89,9 @@ export default {
         });
     },
 
-    async addToGroup(userId, groupId, memberIds) {
+    async addToGroup(groupId, username) {
         return axios.post(`/groups/${groupId}/members`, {
-            membersList: memberIds
+            username: username 
         });
     },
 

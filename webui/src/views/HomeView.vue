@@ -7,6 +7,8 @@ export default {
             errormsg: null,
             loading: false,
             myId: parseInt(sessionStorage.getItem('userId')) || 0,
+            myUsername: sessionStorage.getItem('username') || "Me",
+            myPhoto: sessionStorage.getItem('userPhoto'),
             chats: [],              
             messages: [],           
             currentChatId: null,
@@ -30,7 +32,6 @@ export default {
             const chat = this.chats.find(c => c.id === this.currentChatId);
             return chat ? !!chat.isGroup : false;
         },
-        myUsername() { return "Me"; }
     },
     mounted() {
         if (!this.myId) { this.$router.push('/login'); return; }
@@ -48,9 +49,10 @@ export default {
     methods: {
         getImageSrc(base64Data) {
             if (!base64Data) return null;
+            if (base64Data.startsWith('data:')) return base64Data;
             return `data:image/jpeg;base64,${base64Data}`;
         },
-
+        
         async refresh() {
             try {
                 const response = await api.getMyConversations(this.myId);
@@ -252,7 +254,13 @@ export default {
                 await this.refresh();
                 const chatId = response.data.id || response.data.Id; 
                 if (chatId) await this.selectChat(chatId);
-            } catch (e) { alert(e.toString()); }
+            } catch (e) { 
+                if (e.response && e.response.status === 404) {
+                     alert("Errore: Utente '" + otherUsername + "' non trovato.");
+                } else {
+                     alert("Errore: " + (e.response?.data?.message || e.toString())); 
+                }
+             }
         },
 
         formatDate(isoString) {
@@ -296,11 +304,20 @@ export default {
 <template>
   <div class="container-fluid vh-100 p-0 d-flex flex-column font-sans bg-dark-theme position-relative">
     <div class="d-flex justify-content-between align-items-center py-2 px-3 border-bottom-dark header-bg" style="flex: 0 0 auto;">
-      <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText</h4>
+      <div class="d-flex align-items-center">
+          <div class="me-2">
+            <img v-if="getImageSrc(myPhoto)" :src="getImageSrc(myPhoto)" class="rounded-circle border-teal" style="width: 40px; height: 40px; object-fit: cover;">
+            <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 40px; height: 40px; color: #FAAB36; border: 1px solid #444;">
+              {{ (myUsername || 'ME').charAt(0).toUpperCase() }}
+            </div>
+          </div>
+          <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText - {{ myUsername }}</h4>
+      </div>
+
       <div class="btn-group">
         <button class="btn btn-sm btn-teal" @click="startConversation">Cerca</button>
         <button class="btn btn-sm btn-outline-orange" @click="createGroup">Crea Gruppo</button>
-      </div>
+        </div>
     </div>
 
     <div v-if="errormsg" class="alert alert-danger mx-3 mt-2 mb-0 py-2">{{ errormsg }}</div>
@@ -309,12 +326,7 @@ export default {
       <div class="col-md-4 col-lg-3 border-end-dark d-flex flex-column h-100 sidebar-bg">
         <div class="overflow-auto flex-grow-1">
           <ul class="list-group list-group-flush">
-            <li
-              v-for="chat in chats" :key="chat.id" 
-              class="list-group-item list-group-item-action cursor-pointer d-flex align-items-center py-3 border-bottom-dark chat-item"
-              :class="{ 'active-chat': currentChatId === chat.id }"
-              @click="selectChat(chat.id)"
-            >
+            <li v-for="chat in chats" :key="chat.id" class="list-group-item list-group-item-action cursor-pointer d-flex align-items-center py-3 border-bottom-dark chat-item" :class="{ 'active-chat': currentChatId === chat.id }" @click="selectChat(chat.id)">
               <div class="me-3">
                 <img v-if="getImageSrc(chat.photoChat)" :src="getImageSrc(chat.photoChat)" class="rounded-circle border-teal" style="width: 45px; height: 45px; object-fit: cover;">
                 <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 45px; height: 45px; color: #FAAB36;">
@@ -337,7 +349,6 @@ export default {
         <div v-if="!currentChatId" class="d-flex align-items-center justify-content-center h-100 text-muted">
           <h4>Seleziona una chat</h4>
         </div>
-                
         <div v-else class="d-flex flex-column h-100 w-100">
           <div class="d-flex align-items-center px-3 py-2 header-bg border-bottom-dark shadow-sm" style="flex: 0 0 auto;">
             <img v-if="getImageSrc(currentChatPhoto)" :src="getImageSrc(currentChatPhoto)" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
@@ -345,69 +356,52 @@ export default {
               {{ (currentChatName || '?').charAt(0).toUpperCase() }}
             </div>
             <h5 class="m-0 text-light flex-grow-1">{{ currentChatName }}</h5>
-
-            <button v-if="isCurrentChatGroup" class="btn btn-sm btn-outline-orange ms-2" title="Info Gruppo" @click="openGroupInfo">
-              ℹ️ Info
-            </button>
+            <button v-if="isCurrentChatGroup" class="btn btn-sm btn-outline-orange ms-2" @click="openGroupInfo">ℹ️ Info</button>
           </div>
 
           <div ref="messageContainer" class="flex-grow-1 overflow-auto p-3">
             <div v-for="msg in messages" :key="msg.id" class="d-flex mb-2 w-100" :class="{ 'justify-content-end': msg.sentBy == myId }">
-              <div
-                class="card border-0 shadow-sm msg-bubble position-relative" 
-                :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }"
-              >
+              <div class="card border-0 shadow-sm msg-bubble position-relative" :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }">
                 <div class="card-body p-2">
                   <div v-if="isCurrentChatGroup && msg.sentBy != myId" class="fw-bold mb-1" style="font-size: 0.75rem; color: #FAAB36;">
                     {{ msg.senderName || 'Utente ' + msg.sentBy }}
                   </div>
-
+                  
                   <div v-if="msg.isForward" class="mb-1 fst-italic" style="font-size: 0.75rem; color: #e0e0e0;">
                     <span class="me-1">↪</span>Inoltrato
                   </div>
-                  <div v-if="msg.replyTo" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
+
+                  <div v-if="msg.replyTo && !msg.isForward" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
                     <div class="d-flex flex-column">
                       <template v-if="getReplySnippet(msg.replyTo).found">
-                        <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">
-                          {{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}
-                        </small>
+                        <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">{{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}</small>
                         <span class="text-truncate small opacity-75">{{ getReplySnippet(msg.replyTo).text }}</span>
                       </template>
                       <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
                     </div>
                   </div>
+
                   <div v-if="getImageSrc(msg.photoFile)" class="mb-2">
-                    <img :src="getImageSrc(msg.photoFile)" class="img-fluid rounded" style="max-height: 300px;">
+                      <img :src="getImageSrc(msg.photoFile)" class="img-fluid rounded" style="max-height: 300px;">
                   </div>
-                  <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text }}</p>
-                                    
+                  
+                  <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text || (msg.isForward && getReplySnippet(msg.replyTo).found ? getReplySnippet(msg.replyTo).text : '') }}</p>
+
                   <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
-                    <span
-                      v-for="(reaction, idx) in msg.reactions" :key="idx" 
-                      class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1"
-                      style="font-size: 0.85rem; cursor: pointer; user-select: none;"
-                      :title="'Reazione di ' + reaction.username" @click="removeReaction(msg.id)"
-                    >
+                    <span v-for="(reaction, idx) in msg.reactions" :key="idx" class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1" style="cursor: pointer;" @click="removeReaction(msg.id)">
                       {{ reaction.emoticon }} <span style="font-size: 0.6rem; margin-left: 4px; color: #aaa;">{{ reaction.username }}</span>
                     </span>
                   </div>
-
                   <div class="d-flex justify-content-end align-items-center mt-1 text-nowrap" style="font-size: 0.7rem; opacity: 0.7;">
                     <span class="me-2">{{ formatDate(msg.sentAt) }}</span>
-                    <span v-if="msg.sentBy == myId" class="me-2">
-                      <span v-if="msg.checkmark" style="color: #FAAB36; font-weight: bold;">✓✓</span>
-                      <span v-else>✓</span>
-                    </span>
+                    <span v-if="msg.sentBy == myId" class="me-2">{{ msg.checkmark ? '✓✓' : '✓' }}</span>
                     <div class="d-flex gap-2 bg-dark rounded px-1 action-buttons position-relative">
                       <span class="cursor-pointer" title="Reagisci" @click.stop="toggleReactionMenu(msg.id)">😀</span>
                       <span class="cursor-pointer" title="Rispondi" @click.stop="setReply(msg)">↩️</span>
                       <span class="cursor-pointer" title="Inoltra" @click.stop="forwardMsg(msg)">➡️</span>
                       <span v-if="msg.sentBy == myId" class="cursor-pointer text-danger" title="Elimina" @click.stop="deleteMsg(msg.id)">🗑️</span>
-                      <div
-                        v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" 
-                        :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }"
-                      >
-                        <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" style="font-size: 1.2rem;" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
+                      <div v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }">
+                        <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
                       </div>
                     </div>
                   </div>
@@ -416,7 +410,7 @@ export default {
             </div>
           </div>
 
-          <div class="input-area border-top-dark p-2" style="flex: 0 0 auto;">
+          <div class="input-area border-top-dark p-3" style="flex: 0 0 auto;">
             <div v-if="replyingToMsg" class="mb-2 p-2 bg-dark rounded border-start border-4 border-orange d-flex justify-content-between align-items-center">
               <div class="overflow-hidden">
                 <small class="text-orange fw-bold d-block">Rispondendo a:</small>
@@ -424,16 +418,19 @@ export default {
               </div>
               <button class="btn btn-close btn-close-white btn-sm ms-2" @click="cancelReply" />
             </div>
-            <div class="input-group">
-              <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
-              <button class="btn btn-teal" @click="sendMessage">➤</button>
-            </div>
-            <div class="mt-2 d-flex align-items-center">
-              <label class="btn btn-sm btn-outline-secondary me-2" style="cursor: pointer;">
-                📷 Allega Foto
-                <input ref="msgFileInput" type="file" class="d-none" accept="image/*" @change="onMessageFileChange">
-              </label>
-              <span v-if="newPhotoFile" class="small text-light">{{ newPhotoFile.name }}</span>
+            
+            <div class="d-flex align-items-center gap-2">
+                <label class="btn btn-outline-secondary d-flex align-items-center justify-content-center" style="width: 40px; height: 38px; cursor: pointer; padding: 0;" title="Allega Foto">
+                    📷
+                    <input type="file" ref="msgFileInput" class="d-none" accept="image/*" @change="onMessageFileChange">
+                </label>
+
+                <div v-if="newPhotoFile" class="small text-orange position-absolute" style="top: -20px; left: 15px;">
+                   {{ newPhotoFile.name }}
+                </div>
+
+                <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
+                <button class="btn btn-teal" @click="sendMessage">➤</button>
             </div>
           </div>
         </div>
@@ -450,21 +447,15 @@ export default {
           <div class="mb-3">
             <label class="form-label fw-bold text-light">Nome Gruppo</label>
             <input v-model="newGroupName" class="form-control dark-input mb-2" placeholder="Nome gruppo">
-            
             <label class="form-label fw-bold text-light">Foto Gruppo</label>
             <input type="file" class="form-control dark-input mb-2" accept="image/*" @change="onGroupFileChange">
-            
             <button class="btn btn-sm btn-outline-teal w-100" @click="saveGroupSettings">Salva Modifiche</button>
           </div>
           <hr class="border-secondary">
-
           <h6 class="fw-bold mb-2 text-orange">Membri ({{ groupMembers.length }})</h6>
           <ul class="list-group list-group-flush mb-3">
             <li v-for="m in groupMembers" :key="m.id" class="list-group-item d-flex align-items-center px-0 bg-transparent text-light border-secondary">
-              <div
-                class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center me-2 fw-bold" 
-                style="width: 32px; height: 32px; font-size: 0.8rem; color: #FAAB36;"
-              >
+              <div class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center me-2 fw-bold" style="width: 32px; height: 32px; font-size: 0.8rem; color: #FAAB36;">
                 <img v-if="getImageSrc(m.profilePhoto)" :src="getImageSrc(m.profilePhoto)" class="rounded-circle w-100 h-100 object-fit-cover">
                 <span v-else>{{ m.username.charAt(0).toUpperCase() }}</span>
               </div>
@@ -472,7 +463,6 @@ export default {
               <span v-if="m.id === myId" class="badge bg-teal ms-auto">Tu</span>
             </li>
           </ul>
-                    
           <button class="btn btn-sm btn-success w-100 mb-2" @click="addMemberToGroup">Aggiungi Membro</button>
           <hr class="border-secondary">
           <button class="btn btn-sm btn-danger w-100" @click="leaveGroup">Abbandona Gruppo</button>
