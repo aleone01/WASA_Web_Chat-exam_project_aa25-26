@@ -305,19 +305,19 @@ export default {
   <div class="container-fluid vh-100 p-0 d-flex flex-column font-sans bg-dark-theme position-relative">
     <div class="d-flex justify-content-between align-items-center py-2 px-3 border-bottom-dark header-bg" style="flex: 0 0 auto;">
       <div class="d-flex align-items-center">
-          <div class="me-2">
-            <img v-if="getImageSrc(myPhoto)" :src="getImageSrc(myPhoto)" class="rounded-circle border-teal" style="width: 40px; height: 40px; object-fit: cover;">
-            <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 40px; height: 40px; color: #FAAB36; border: 1px solid #444;">
-              {{ (myUsername || 'ME').charAt(0).toUpperCase() }}
-            </div>
+        <div class="me-2">
+          <img v-if="getImageSrc(myPhoto)" :src="getImageSrc(myPhoto)" class="rounded-circle border-teal" style="width: 40px; height: 40px; object-fit: cover;">
+          <div v-else class="rounded-circle bg-dark-circle d-flex align-items-center justify-content-center fw-bold" style="width: 40px; height: 40px; color: #FAAB36; border: 1px solid #444;">
+            {{ (myUsername || 'ME').charAt(0).toUpperCase() }}
           </div>
-          <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText - {{ myUsername }}</h4>
+        </div>
+        <h4 class="m-0 fw-bold" style="color: #249EA0;">WasaText - {{ myUsername }}</h4>
       </div>
 
       <div class="btn-group">
         <button class="btn btn-sm btn-teal" @click="startConversation">Cerca</button>
         <button class="btn btn-sm btn-outline-orange" @click="createGroup">Crea Gruppo</button>
-        </div>
+      </div>
     </div>
 
     <div v-if="errormsg" class="alert alert-danger mx-3 mt-2 mb-0 py-2">{{ errormsg }}</div>
@@ -349,6 +349,7 @@ export default {
         <div v-if="!currentChatId" class="d-flex align-items-center justify-content-center h-100 text-muted">
           <h4>Seleziona una chat</h4>
         </div>
+
         <div v-else class="d-flex flex-column h-100 w-100">
           <div class="d-flex align-items-center px-3 py-2 header-bg border-bottom-dark shadow-sm" style="flex: 0 0 auto;">
             <img v-if="getImageSrc(currentChatPhoto)" :src="getImageSrc(currentChatPhoto)" class="rounded-circle border-teal me-2" style="width: 35px; height: 35px; object-fit: cover;">
@@ -360,48 +361,59 @@ export default {
           </div>
 
           <div ref="messageContainer" class="flex-grow-1 overflow-auto p-3">
-            <div v-for="msg in messages" :key="msg.id" class="d-flex mb-2 w-100" :class="{ 'justify-content-end': msg.sentBy == myId }">
-              <div class="card border-0 shadow-sm msg-bubble position-relative" :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }">
-                <div class="card-body p-2">
-                  <div v-if="isCurrentChatGroup && msg.sentBy != myId" class="fw-bold mb-1" style="font-size: 0.75rem; color: #FAAB36;">
-                    {{ msg.senderName || 'Utente ' + msg.sentBy }}
-                  </div>
-                  
-                  <div v-if="msg.isForward" class="mb-1 fst-italic" style="font-size: 0.75rem; color: #e0e0e0;">
-                    <span class="me-1">↪</span>Inoltrato
-                  </div>
+            <div v-for="msg in messages" :key="msg.id">
+              <div v-if="msg.text && msg.text.startsWith('[INFO]:')" class="w-100 text-center my-3">
+                <span class="badge bg-secondary text-wrap shadow-sm px-3 py-1 border border-secondary" style="font-size: 0.75rem; background-color: #2d2d2d !important; color: #aaa;">
+                  {{ msg.text.replace('[INFO]: ', '') }}
+                </span>
+              </div>
 
-                  <div v-if="msg.replyTo && !msg.isForward" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
-                    <div class="d-flex flex-column">
-                      <template v-if="getReplySnippet(msg.replyTo).found">
-                        <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">{{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}</small>
-                        <span class="text-truncate small opacity-75">{{ getReplySnippet(msg.replyTo).text }}</span>
-                      </template>
-                      <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
+              <div v-else class="d-flex mb-2 w-100" :class="{ 'justify-content-end': msg.sentBy == myId }">
+                <div class="card border-0 shadow-sm msg-bubble position-relative" :class="{ 'msg-sent': msg.sentBy == myId, 'msg-received': msg.sentBy != myId }">
+                  <div class="card-body p-2">
+                    <div v-if="isCurrentChatGroup && msg.sentBy != myId" class="fw-bold mb-1" style="font-size: 0.75rem; color: #FAAB36;">
+                      {{ msg.senderName || 'Utente ' + msg.sentBy }}
                     </div>
-                  </div>
+                    
+                    <div v-if="msg.isForward" class="mb-1 fst-italic" style="font-size: 0.75rem; color: #e0e0e0;">
+                      <span class="me-1">↪</span>Inoltrato
+                    </div>
 
-                  <div v-if="getImageSrc(msg.photoFile)" class="mb-2">
+                    <div v-if="msg.replyTo && !msg.isForward" class="mb-2 p-2 rounded border-start border-4 reply-box" :class="msg.sentBy == myId ? 'reply-sent' : 'reply-received'">
+                      <div class="d-flex flex-column">
+                        <template v-if="getReplySnippet(msg.replyTo).found">
+                          <small class="fw-bold" style="font-size: 0.7rem; color: #FAAB36;">{{ getReplySnippet(msg.replyTo).authorId == myId ? 'Tu' : 'Utente' }}</small>
+                          <span class="text-truncate small opacity-75">{{ getReplySnippet(msg.replyTo).text }}</span>
+                        </template>
+                        <template v-else><small class="text-muted fst-italic">Msg originale non disponibile</small></template>
+                      </div>
+                    </div>
+
+                    <div v-if="getImageSrc(msg.photoFile)" class="mb-2">
                       <img :src="getImageSrc(msg.photoFile)" class="img-fluid rounded" style="max-height: 300px;">
-                  </div>
-                  
-                  <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text || (msg.isForward && getReplySnippet(msg.replyTo).found ? getReplySnippet(msg.replyTo).text : '') }}</p>
+                    </div>
+                    
+                    <p class="mb-1 text-break" style="white-space: pre-wrap;">{{ msg.text || (msg.isForward && getReplySnippet(msg.replyTo).found ? getReplySnippet(msg.replyTo).text : '') }}</p>
 
-                  <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
-                    <span v-for="(reaction, idx) in msg.reactions" :key="idx" class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1" style="cursor: pointer;" @click="removeReaction(msg.id)">
-                      {{ reaction.emoticon }} <span style="font-size: 0.6rem; margin-left: 4px; color: #aaa;">{{ reaction.username }}</span>
-                    </span>
-                  </div>
-                  <div class="d-flex justify-content-end align-items-center mt-1 text-nowrap" style="font-size: 0.7rem; opacity: 0.7;">
-                    <span class="me-2">{{ formatDate(msg.sentAt) }}</span>
-                    <span v-if="msg.sentBy == myId" class="me-2">{{ msg.checkmark ? '✓✓' : '✓' }}</span>
-                    <div class="d-flex gap-2 bg-dark rounded px-1 action-buttons position-relative">
-                      <span class="cursor-pointer" title="Reagisci" @click.stop="toggleReactionMenu(msg.id)">😀</span>
-                      <span class="cursor-pointer" title="Rispondi" @click.stop="setReply(msg)">↩️</span>
-                      <span class="cursor-pointer" title="Inoltra" @click.stop="forwardMsg(msg)">➡️</span>
-                      <span v-if="msg.sentBy == myId" class="cursor-pointer text-danger" title="Elimina" @click.stop="deleteMsg(msg.id)">🗑️</span>
-                      <div v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }">
-                        <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
+                    <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mb-1 mt-1 ms-1">
+                      <span v-for="(reaction, idx) in msg.reactions" :key="idx" class="badge bg-dark-circle text-light border border-secondary rounded-pill d-flex align-items-center px-2 py-1" style="cursor: pointer;" @click="removeReaction(msg.id)">
+                        {{ reaction.emoticon }} <span style="font-size: 0.6rem; margin-left: 4px; color: #aaa;">{{ reaction.username }}</span>
+                      </span>
+                    </div>
+
+                    <div class="d-flex justify-content-end align-items-center mt-1 text-nowrap" style="font-size: 0.7rem; opacity: 0.7;">
+                      <span class="me-2">{{ formatDate(msg.sentAt) }}</span>
+                      <span v-if="msg.sentBy == myId" class="me-2">{{ msg.checkmark ? '✓✓' : '✓' }}</span>
+                      
+                      <div class="d-flex gap-2 bg-dark rounded px-1 action-buttons position-relative">
+                        <span class="cursor-pointer" title="Reagisci" @click.stop="toggleReactionMenu(msg.id)">😀</span>
+                        <span class="cursor-pointer" title="Rispondi" @click.stop="setReply(msg)">↩️</span>
+                        <span class="cursor-pointer" title="Inoltra" @click.stop="forwardMsg(msg)">➡️</span>
+                        <span v-if="msg.sentBy == myId" class="cursor-pointer text-danger" title="Elimina" @click.stop="deleteMsg(msg.id)">🗑️</span>
+                        
+                        <div v-if="activeReactionMenuId === msg.id" class="position-absolute bg-dark shadow rounded p-2 d-flex gap-2 border border-secondary" :style="{ bottom: '100%', zIndex: 1000, right: msg.sentBy == myId ? '0' : 'auto', left: msg.sentBy != myId ? '0' : 'auto' }">
+                          <button v-for="emoji in availableReactions" :key="emoji" class="btn btn-sm btn-dark p-1 border-0" @click.stop="reactToMsg(msg.id, emoji)">{{ emoji }}</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -410,7 +422,7 @@ export default {
             </div>
           </div>
 
-          <div class="input-area border-top-dark p-3" style="flex: 0 0 auto;">
+          <div class="input-area border-top-dark p-3" style="flex: 0 0 auto;">        
             <div v-if="replyingToMsg" class="mb-2 p-2 bg-dark rounded border-start border-4 border-orange d-flex justify-content-between align-items-center">
               <div class="overflow-hidden">
                 <small class="text-orange fw-bold d-block">Rispondendo a:</small>
@@ -420,17 +432,17 @@ export default {
             </div>
             
             <div class="d-flex align-items-center gap-2">
-                <label class="btn btn-outline-secondary d-flex align-items-center justify-content-center" style="width: 40px; height: 38px; cursor: pointer; padding: 0;" title="Allega Foto">
-                    📷
-                    <input type="file" ref="msgFileInput" class="d-none" accept="image/*" @change="onMessageFileChange">
-                </label>
+              <label class="btn btn-outline-secondary d-flex align-items-center justify-content-center" style="width: 40px; height: 38px; cursor: pointer; padding: 0;" title="Allega Foto">
+                📷
+                <input ref="msgFileInput" type="file" class="d-none" accept="image/*" @change="onMessageFileChange">
+              </label>
 
-                <div v-if="newPhotoFile" class="small text-orange position-absolute" style="top: -20px; left: 15px;">
-                   {{ newPhotoFile.name }}
-                </div>
+              <div v-if="newPhotoFile" class="small text-orange position-absolute" style="top: -20px; left: 15px;">
+                {{ newPhotoFile.name }}
+              </div>
 
-                <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
-                <button class="btn btn-teal" @click="sendMessage">➤</button>
+              <input ref="inputField" v-model="newMessageText" type="text" class="form-control dark-input" placeholder="Scrivi un messaggio..." @keyup.enter="sendMessage">
+              <button class="btn btn-teal" @click="sendMessage">➤</button>
             </div>
           </div>
         </div>

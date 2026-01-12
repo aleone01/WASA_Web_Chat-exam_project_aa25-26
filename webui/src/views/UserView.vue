@@ -23,9 +23,34 @@ export default {
             return `data:image/jpeg;base64,${base64Data}`;
         },
 
+        // Helper per notificare tutte le chat (messaggio di sistema)
+        async notifyAllChats(messageContent) {
+            try {
+                const res = await api.getMyConversations(this.userId);
+                const chats = res.data.chats || res.data || [];
+                const systemText = `[INFO]: ${messageContent}`;
+                
+                const promises = chats.map(chat => 
+                    api.sendMessage(this.userId, chat.id, systemText, null)
+                );
+                await Promise.all(promises);
+            } catch (e) {
+                console.error("Errore invio notifica chat", e);
+            }
+        },
+
         async updateUsername() {
+          
             if (!this.username || this.username.length < 3 || this.username.length > 16) {
                 this.error = "L'username deve essere tra 3 e 16 caratteri.";
+                return;
+            }
+
+           
+            const oldUsername = sessionStorage.getItem('username');
+            if (this.username === oldUsername) {
+                this.msg = "Nessuna modifica effettuata all'username.";
+                this.error = null;
                 return;
             }
 
@@ -35,13 +60,31 @@ export default {
 
             try {
                 await api.setMyUserName(this.userId, this.username);
+                
                 sessionStorage.setItem('username', this.username);
+                await this.notifyAllChats(`L'utente ha cambiato username in "${this.username}"`);
+
                 this.msg = "Username aggiornato con successo!";
             } catch (e) {
-                if (e.response && e.response.data) {
-                    this.error = "Errore: " + (e.response.data.message || e.response.data);
+            
+                const errMsg = e.response?.data?.message || e.response?.data || "";
+                const errStr = String(errMsg).toLowerCase();
+                const status = e.response?.status;
+
+                // Se l'errore è un conflitto (409), un errore server generico (500),
+                // o se il messaggio contiene parole chiave di errore/duplicazione.
+                if (status === 409 || 
+                    status === 500 || 
+                    errStr.includes("taken") || 
+                    errStr.includes("exist") || 
+                    errStr.includes("duplicate") || 
+                    errStr.includes("constraint") ||
+                    errStr.includes("errore")) { 
+                    
+                    this.error = `L'username "${this.username}" è già in uso. Scegline un altro.`;
                 } else {
-                    this.error = "Errore aggiornamento username: " + e.message;
+                    // Fallback per altri errori (es. rete)
+                    this.error = "Si è verificato un problema: " + (errMsg || e.message);
                 }
             }
             this.loading = false;
@@ -56,7 +99,7 @@ export default {
 
         async updatePhoto() {
             if (!this.photoFile) {
-                this.error = "Seleziona un file.";
+                this.error = "Seleziona un file prima di caricare.";
                 return;
             }
 
@@ -67,14 +110,17 @@ export default {
             try {
 
                 await api.setMyPhoto(this.userId, this.photoFile);
-                
                 const reader = new FileReader();
-                reader.onload = (e) => {
+                reader.onload = async (e) => {
                     const base64String = e.target.result;
                     this.currentPhoto = base64String;
                     const rawBase64 = base64String.split(',')[1];
+                    
                     sessionStorage.setItem('userPhoto', rawBase64);
                     localStorage.setItem(`wasa_photo_${this.userId}`, rawBase64);
+
+                    const currentName = sessionStorage.getItem('username') || "L'utente";
+                    await this.notifyAllChats(`${currentName} ha aggiornato la foto profilo`);
                 };
                 reader.readAsDataURL(this.photoFile);
 
@@ -122,18 +168,17 @@ export default {
             Cambia Foto Profilo
           </div>
           <div class="card-body text-center">
-            
             <div class="mb-3">
-                <p class="text-light mb-1">Foto Attuale:</p>
-                <img v-if="getImageSrc(currentPhoto)" :src="getImageSrc(currentPhoto)" class="rounded-circle border border-light" style="width: 100px; height: 100px; object-fit: cover;">
-                <div v-else class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white" style="width: 100px; height: 100px;">
-                    <span style="font-size: 2rem;">{{ (username || 'U').charAt(0).toUpperCase() }}</span>
-                </div>
+              <p class="text-light mb-1">Foto Attuale:</p>
+              <img v-if="getImageSrc(currentPhoto)" :src="getImageSrc(currentPhoto)" class="rounded-circle border border-light" style="width: 100px; height: 100px; object-fit: cover;">
+              <div v-else class="rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white" style="width: 100px; height: 100px;">
+                <span style="font-size: 2rem;">{{ (username || 'U').charAt(0).toUpperCase() }}</span>
+              </div>
             </div>
 
             <div class="mb-3 text-start">
               <label class="form-label text-light">Carica Nuova Foto</label>
-              <input type="file" ref="fileInput" class="form-control dark-input" accept="image/*" @change="onFileChange">
+              <input ref="fileInput" type="file" class="form-control dark-input" accept="image/*" @change="onFileChange">
             </div>
             <button class="btn btn-orange w-100" :disabled="loading" @click="updatePhoto">
               {{ loading ? 'Attendi...' : 'Carica Foto' }}
