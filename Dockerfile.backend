@@ -25,8 +25,11 @@ WORKDIR /app
 # Copia l'eseguibile compilato
 COPY --from=builder /app/webapi .
 
-# Copia il file del database SQLite
-COPY --from=builder /app/service/database /app/service/database
+# Crea la struttura delle cartelle per il database.
+RUN mkdir -p /app/service/database
+
+# Assegna i permessi alla cartella del database
+RUN chmod 777 /app/service/database
 
 # Assegna i permessi di esecuzione al file binario
 RUN chmod +x ./webapi

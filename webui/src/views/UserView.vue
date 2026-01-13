@@ -40,51 +40,29 @@ export default {
         },
 
         async updateUsername() {
-          
             if (!this.username || this.username.length < 3 || this.username.length > 16) {
                 this.error = "L'username deve essere tra 3 e 16 caratteri.";
                 return;
             }
-
-           
-            const oldUsername = sessionStorage.getItem('username');
-            if (this.username === oldUsername) {
-                this.msg = "Nessuna modifica effettuata all'username.";
-                this.error = null;
-                return;
+            if (this.username === sessionStorage.getItem('username')) {
+                this.msg = "Nessuna modifica effettuata all'username."; this.error = null; return;
             }
 
-            this.loading = true;
-            this.error = null;
-            this.msg = null;
+            this.loading = true; this.error = null; this.msg = null;
 
             try {
                 await api.setMyUserName(this.userId, this.username);
-                
                 sessionStorage.setItem('username', this.username);
                 await this.notifyAllChats(`L'utente ha cambiato username in "${this.username}"`);
-
                 this.msg = "Username aggiornato con successo!";
             } catch (e) {
-            
-                const errMsg = e.response?.data?.message || e.response?.data || "";
-                const errStr = String(errMsg).toLowerCase();
+                const errMsg = String(e.response?.data?.message || e.response?.data || "").toLowerCase();
                 const status = e.response?.status;
-
-                // Se l'errore è un conflitto (409), un errore server generico (500),
-                // o se il messaggio contiene parole chiave di errore/duplicazione.
-                if (status === 409 || 
-                    status === 500 || 
-                    errStr.includes("taken") || 
-                    errStr.includes("exist") || 
-                    errStr.includes("duplicate") || 
-                    errStr.includes("constraint") ||
-                    errStr.includes("errore")) { 
-                    
+                
+                if (status === 409 || status === 500 || errMsg.includes("taken") || errMsg.includes("exist") || errMsg.includes("duplicate") || errMsg.includes("constraint")) {
                     this.error = `L'username "${this.username}" è già in uso. Scegline un altro.`;
                 } else {
-                    // Fallback per altri errori (es. rete)
-                    this.error = "Si è verificato un problema: " + (errMsg || e.message);
+                    this.error = "Errore durante l'aggiornamento: " + (e.response?.data?.message || e.message);
                 }
             }
             this.loading = false;

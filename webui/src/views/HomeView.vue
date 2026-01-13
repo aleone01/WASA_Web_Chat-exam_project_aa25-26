@@ -54,9 +54,16 @@ export default {
         },
         
         async refresh() {
-            try {
+             try {
                 const response = await api.getMyConversations(this.myId);
                 this.chats = response.data.chats || response.data || [];
+                if (this.currentChatId) {
+                    const activeChat = this.chats.find(c => c.id === this.currentChatId);
+                    if (activeChat) {
+                        this.currentChatName = activeChat.name;
+                        this.currentChatPhoto = activeChat.photoChat;
+                    }
+                }
             } catch (e) { console.error(e); }
         },
 
