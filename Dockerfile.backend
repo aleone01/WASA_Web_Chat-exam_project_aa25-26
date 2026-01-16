@@ -1,41 +1,50 @@
 # Usa Go 1.25 come richiesto da go.mod
+# Stage 1: Builder
+# Utilizziamo un'immagine con tutti i tool di compilazione necessari
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Installa git e build-base (gcc) per compilare SQLite con CGO
+# Installa git e build-base (gcc) necessari per compilare SQLite tramite CGO.
+# Alpine è minimale, quindi gcc non è incluso di default.
 RUN apk add --no-cache git build-base
 
-# Copia i file delle dipendenze e scarica i moduli
+# Copia i file delle dipendenze e scarica i moduli prima del codice sorgente
+# per sfruttare la cache dei layer di Docker.
 COPY go.mod go.sum ./
 RUN go mod download
 
 # Copia tutto il codice sorgente
 COPY . .
 
-# Abilita CGO e compila il main.go che si trova in cmd/webapi
+# Abilita CGO (C Go) indispensabile per il driver go-sqlite3 e compila il binario.
+# -o webapi definisce il nome dell'eseguibile di output.
 ENV CGO_ENABLED=1
 RUN go build -o webapi ./cmd/webapi
 
-# Immagine Finale
+# Stage 2: Immagine Finale
+# Utilizziamo un'immagine Alpine pulita per mantenere il container leggero (pochi MB).
 FROM alpine:latest
 
+# Imposta la working directory
 WORKDIR /app
 
-# Copia l'eseguibile compilato
+# Copia solo l'eseguibile compilato dallo stage builder, scartando codice sorgente e compilatori.
 COPY --from=builder /app/webapi .
 
-# Crea la struttura delle cartelle per il database.
+# Crea la struttura delle cartelle per il database persistente.
 RUN mkdir -p /app/service/database
 
-# Assegna i permessi alla cartella del database
+# Assegna i permessi 777 alla cartella del database, ossia permessi di lettura, scrittura ed esecuzione per tutti.
+# Necessario perché SQLite crea file temporanei (.wal, .shm) nella stessa directory
+# e deve avere permessi di scrittura completi nel contesto del container.
 RUN chmod 777 /app/service/database
 
 # Assegna i permessi di esecuzione al file binario
 RUN chmod +x ./webapi
 
-# Espone la porta API
+# Espone la porta API standard definita nell'applicazione
 EXPOSE 3000
 
-# Avvia il server
+# Avvia il server backend
 CMD ["./webapi"]

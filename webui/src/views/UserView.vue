@@ -1,6 +1,9 @@
 <script>
 import api from '@/services/api'
 
+// Componente UserView.
+// Permette all'utente di modificare il proprio profilo (Username e Foto).
+// Implementa anche una logica di notifica automatica verso tutte le chat attive per avvisare del cambiamento.
 export default {
     data() {
         return {
@@ -8,28 +11,31 @@ export default {
             username: sessionStorage.getItem('username') || "", 
             currentPhoto: sessionStorage.getItem('userPhoto'),  
             photoFile: null,
-            msg: null,     
-            error: null,   
+            msg: null,     // Messaggi di successo
+            error: null,   // Messaggi di errore
             loading: false
         }
     },
 
     methods: {
 
-        // Helper per visualizzare l'immagine base64
+        // Helper per renderizzare l'immagine base64 (aggiunge prefisso data:image se mancante).
         getImageSrc(base64Data) {
             if (!base64Data) return null;
             if (base64Data.startsWith('data:')) return base64Data;
             return `data:image/jpeg;base64,${base64Data}`;
         },
 
-        // Helper per notificare tutte le chat (messaggio di sistema)
+        // Invia un messaggio di sistema automatico [INFO] a tutte le conversazioni aperte.
+        // Utilizzato per informare gli interlocutori che questo utente ha cambiato nome o foto.
         async notifyAllChats(messageContent) {
             try {
+                // Recupera tutte le chat
                 const res = await api.getMyConversations(this.userId);
                 const chats = res.data.chats || res.data || [];
                 const systemText = `[INFO]: ${messageContent}`;
                 
+                // Invia il messaggio a ogni chat in parallelo
                 const promises = chats.map(chat => 
                     api.sendMessage(this.userId, chat.id, systemText, null)
                 );
@@ -39,6 +45,8 @@ export default {
             }
         },
 
+        // Gestisce l'aggiornamento dello username.
+        // Include validazione lunghezza e controllo errori specifici (es. nome già in uso).
         async updateUsername() {
             if (!this.username || this.username.length < 3 || this.username.length > 16) {
                 this.error = "L'username deve essere tra 3 e 16 caratteri.";
@@ -52,13 +60,16 @@ export default {
 
             try {
                 await api.setMyUserName(this.userId, this.username);
+                // Aggiorna la sessione locale
                 sessionStorage.setItem('username', this.username);
+                // Notifica gli altri utenti
                 await this.notifyAllChats(`L'utente ha cambiato username in "${this.username}"`);
                 this.msg = "Username aggiornato con successo!";
             } catch (e) {
                 const errMsg = String(e.response?.data?.message || e.response?.data || "").toLowerCase();
                 const status = e.response?.status;
                 
+                // Gestione errori specifici (es. vincolo UNIQUE su DB)
                 if (status === 409 || status === 500 || errMsg.includes("taken") || errMsg.includes("exist") || errMsg.includes("duplicate") || errMsg.includes("constraint")) {
                     this.error = `L'username "${this.username}" è già in uso. Scegline un altro.`;
                 } else {
@@ -68,13 +79,14 @@ export default {
             this.loading = false;
         },
 
-        // Gestione del cambio file
+        // Gestisce la selezione del file da input locale.
         onFileChange(e) {
             const files = e.target.files || e.dataTransfer.files;
             if (!files.length) return;
             this.photoFile = files[0];
         },
 
+        // Carica la nuova foto profilo sul server e aggiorna le cache locali.
         async updatePhoto() {
             if (!this.photoFile) {
                 this.error = "Seleziona un file prima di caricare.";
@@ -86,14 +98,17 @@ export default {
             this.msg = null;
 
             try {
-
+                // Upload al server
                 await api.setMyPhoto(this.userId, this.photoFile);
+                
+                // Lettura locale del file per aggiornare l'UI immediatamente senza ricaricare dalla rete
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const base64String = e.target.result;
                     this.currentPhoto = base64String;
                     const rawBase64 = base64String.split(',')[1];
                     
+                    // Aggiorna sessionStorage (sessione corrente) e localStorage (persistenza futura)
                     sessionStorage.setItem('userPhoto', rawBase64);
                     localStorage.setItem(`wasa_photo_${this.userId}`, rawBase64);
 

@@ -7,78 +7,86 @@ import (
 	"time"
 )
 
-// User rappresenta la struttura dati di un utente registrato nel sistema.
-// Contiene l'identificativo univoco, il nome utente e il file (opzionale) della foto profilo.
+// User rappresenta la struttura dati core di un utente nel sistema WASAPhoto.
+// Mappa direttamente le colonne della tabella 'users'.
 type User struct {
 	Id           int    `json:"id"`
 	Username     string `json:"username"`
-	ProfilePhoto []byte `json:"profilePhoto"`
+	ProfilePhoto []byte `json:"profilePhoto"` // Trasmesso come stringa base64 nel JSON se gestito automaticamente
 }
 
-// ChatListItem definisce il modello per visualizzare l'anteprima di una conversazione nella lista delle chat.
-// Include informazioni come il nome della chat (o del gruppo), l'ultimo messaggio inviato e lo stato (gruppo o chat privata).
+// ChatListItem è un DTO (Data Transfer Object) ottimizzato per la lista delle conversazioni (Home Screen).
+// Aggrega dati provenienti da più tabelle (chats, messages, users) per mostrare un'anteprima.
 type ChatListItem struct {
 	Id          int       `json:"id"`
-	Name        string    `json:"name,omitempty"`
+	Name        string    `json:"name,omitempty"` // Nome del gruppo o dell'interlocutore
 	IsGroup     bool      `json:"isGroup"`
 	PhotoChat   []byte    `json:"photoChat"`
-	LastMessage time.Time `json:"lastMessage"`
-	SnippetText string    `json:"snippetText"`
-	SnippetIcon string    `json:"snippetIcon"`
+	LastMessage time.Time `json:"lastMessage"` // Timestamp per ordinamento
+	SnippetText string    `json:"snippetText"` // Anteprima testuale dell'ultimo messaggio
+	SnippetIcon string    `json:"snippetIcon"` // Eventuale icona di stato
 }
 
-// Message modella un singolo messaggio scambiato all'interno di una conversazione.
-// Oltre al contenuto (testo/foto), tiene traccia del mittente, del timestamp, dello stato di lettura,
-// dei riferimenti (reply/forward) e include il nome del mittente per facilitare la visualizzazione nel frontend.
+// Message rappresenta un singolo messaggio scambiato.
+// Include metadati per funzionalità avanzate come inoltro, risposte e stato di lettura (spunte).
 type Message struct {
 	Id         int        `json:"id"`
-	ChatId     int        `json:"-"`
+	ChatId     int        `json:"-"` // Non esposto nel JSON, uso interno
 	Text       string     `json:"text"`
 	SentAt     time.Time  `json:"sentAt"`
 	SentBy     int        `json:"sentBy"`
 	PhotoFile  []byte     `json:"photoFile,omitempty"`
-	Checkmark  bool       `json:"checkmark"`
-	ReplyTo    int        `json:"replyTo"`
-	IsForward  bool       `json:"isForward"`
-	SenderName string     `json:"senderName"`
-	Reactions  []Reaction `json:"reactions"`
+	Checkmark  bool       `json:"checkmark"`  // true se letto, false se inviato/consegnato
+	ReplyTo    int        `json:"replyTo"`    // ID del messaggio a cui questo risponde (0 se nessuno)
+	IsForward  bool       `json:"isForward"`  // true se il messaggio è stato inoltrato da un'altra chat
+	SenderName string     `json:"senderName"` // Nome visualizzato del mittente (join con users)
+	Reactions  []Reaction `json:"reactions"`  // Lista delle reazioni associate
 }
 
-// Reaction rappresenta una singola reazione (emoticon) lasciata da un utente su un messaggio.
-// Include l'emoticon stessa e lo username dell'autore, permettendo al frontend di mostrare "chi ha reagito".
+// Reaction modella l'associazione tra un messaggio e un'emoticon aggiunta da un utente.
 type Reaction struct {
 	Emoticon string `json:"emoticon"`
-	Username string `json:"username"`
+	Username string `json:"username"` // Chi ha messo la reazione
 }
 
-// Group rappresenta i dettagli di un gruppo di conversazione.
-// Contiene i metadati del gruppo (nome, foto) e la lista degli ID degli utenti partecipanti.
+// Group contiene i dettagli strutturali di una chat di gruppo.
+// Utilizzato principalmente durante la creazione o la modifica delle impostazioni del gruppo.
 type Group struct {
 	Id          int    `json:"id"`
 	GroupName   string `json:"groupname"`
 	GroupPhoto  []byte `json:"groupPhoto"`
-	MembersList []int  `json:"membersList"`
+	MembersList []int  `json:"membersList"` // Lista degli ID degli utenti partecipanti
 }
 
-// AppDatabase è l'interfaccia principale che astrae tutte le interazioni con il database.
-// Definisce i metodi necessari per la gestione di utenti, autenticazione, chat (private e gruppi),
-// messaggistica e reazioni, disaccoppiando la logica di business dall'implementazione SQL sottostante.
+// AppDatabase definisce il contratto per il layer di persistenza dati.
+// Questa interfaccia permette di disaccoppiare la logica API dall'implementazione specifica (es. SQLite),
+// facilitando i test (tramite mock) e la manutenibilità.
 type AppDatabase interface {
 	Ping() error
+
+	// Gestione Utenti
 	CheckToken(token string) (int, error)
 	UserLogin(username string) (int, bool, error)
 	GetUserByUsername(username string) (User, error)
 	SetMyUsername(userId int, newUsername string) (User, error)
 	SetProfilePhoto(userId int, photoFile []byte) (User, error)
+
+	// Gestione Chat e Conversazioni
 	CreateConversation(user1 int, user2 int) (ChatListItem, error)
 	GetMyConversations(userId int) ([]ChatListItem, error)
 	GetConversation(userId int, chatId int) ([]Message, error)
 	GetChatWithUser(userId int, username string) ([]ChatListItem, error)
-	CreateMessage(chatId int, userId int, text string, photoFile []byte, sentAt time.Time, replyTo int, isForward bool) (Message, error) // Modificato input
-	AddReaction(messageId int, userId int, emoticon string) error
-	RemoveReaction(messageId int, userId int) error
+
+	// Gestione Messaggi
+	CreateMessage(chatId int, userId int, text string, photoFile []byte, sentAt time.Time, replyTo int, isForward bool) (Message, error)
 	DeleteMessage(messageId int, userId int) error
 	GetMessage(messageId int) (Message, error)
+
+	// Gestione Reazioni
+	AddReaction(messageId int, userId int, emoticon string) error
+	RemoveReaction(messageId int, userId int) error
+
+	// Gestione Gruppi
 	CreateGroup(name string, photo []byte, members []int, creatorId int) (Group, error)
 	AddGroupMembers(groupId int, newMembers []int) (Group, error)
 	LeaveGroup(groupId int, userId int) error
@@ -89,18 +97,25 @@ type AppDatabase interface {
 	GetGroupMembers(groupId int) ([]User, error)
 }
 
-// appdbimpl è l'implementazione concreta dell'interfaccia AppDatabase basata su database/sql (SQLite).
+// appdbimpl è l'implementazione concreta di AppDatabase per SQLite.
 type appdbimpl struct {
 	c *sql.DB
 }
 
-// New inizializza una nuova istanza del database.
-// Configura le opzioni di connessione (es. chiavi esterne per SQLite) e crea lo schema delle tabelle
-// (utenti, chat, membri, messaggi, reazioni) se non esistono già.
+// New inizializza il database e lo schema relazionale.
+// 1. Abilita le foreign keys (disabilitate di default in SQLite).
+// 2. Crea le tabelle se non esistono:
+//   - users: anagrafica utenti e token.
+//   - chats: registro conversazioni (gruppi e private).
+//   - members: tabella di associazione users <-> chats (relazione molti-a-molti).
+//   - messages: storico messaggi con foreign key verso chat e utenti.
+//   - reactions: reazioni ai messaggi.
 func New(db *sql.DB) (AppDatabase, error) {
 	if db == nil {
 		return nil, errors.New("database is required when building a AppDatabase")
 	}
+
+	// Abilitazione vincoli di integrità referenziale per CASCADE DELETE
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
 	}
@@ -166,7 +181,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 	}, nil
 }
 
-// Ping verifica la connettività al database sottostante.
+// Ping controlla che la connessione al database sia attiva e funzionante.
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
 }

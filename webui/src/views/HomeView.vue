@@ -1,25 +1,48 @@
 <script>
 import api from '@/services/api'
 
+// HomeView è il componente principale dell'applicazione (Dashboard).
+// Gestisce la visualizzazione della lista delle chat, la finestra di conversazione attiva,
+// l'invio/ricezione di messaggi, la gestione dei gruppi e le reazioni.
 export default {
+
     data: function() {
+
         return {
+          
+            // Gestione errori e stati di caricamento
             errormsg: null,
             loading: false,
+
+            // Dati utente corrente recuperati dalla sessione
             myId: parseInt(sessionStorage.getItem('userId')) || 0,
             myUsername: sessionStorage.getItem('username') || "Me",
             myPhoto: sessionStorage.getItem('userPhoto'),
-            chats: [],              
-            messages: [],           
+
+            // Strutture dati principali
+            chats: [],              // Lista delle conversazioni (ChatListItem)
+            messages: [],           // Lista messaggi della chat corrente
+            
+            // Stato della chat attiva
             currentChatId: null,
             currentChatName: "",
             currentChatPhoto: null, 
+
+            // Input per nuovo messaggio
             newMessageText: "",
-            newPhotoFile: null,     
+            newPhotoFile: null,     // Eventuale file immagine allegato
+            
+            // Stato per la funzionalità "Rispondi a" (Reply)
             replyingToMsg: null, 
+
+            // Riferimento all'intervallo per il polling automatico
             refreshInterval: null,
+
+            // Gestione Reazioni (Emoticon)
             availableReactions: ['👍', '❤️', '😂', '😮', '😢', '😡'],
-            activeReactionMenuId: null,
+            activeReactionMenuId: null, // ID del messaggio su cui è aperto il menu reazioni
+
+            // Stato del modale informazioni Gruppo
             showGroupInfoModal: false,
             groupMembers: [],
             newGroupName: "",
@@ -27,6 +50,9 @@ export default {
         }
     },
     computed: {
+
+        // Determina se la chat attualmente selezionata è un gruppo o una chat privata.
+        // Utile per mostrare/nascondere pulsanti specifici (es. "Info Gruppo").
         isCurrentChatGroup() {
             if (!this.currentChatId) return false;
             const chat = this.chats.find(c => c.id === this.currentChatId);
@@ -34,8 +60,16 @@ export default {
         },
     },
     mounted() {
+
+        // Redirect al login se l'utente non è autenticato
         if (!this.myId) { this.$router.push('/login'); return; }
+        
+        // Caricamento iniziale
         this.refresh();
+
+        // Polling: Aggiorna lo stato ogni 3 secondi.
+        // 1. Ricarica la lista delle chat (per vedere nuovi messaggi nelle anteprime).
+        // 2. Se una chat è aperta, ricarica i messaggi specifici di quella conversazione.
         this.refreshInterval = setInterval(() => {
             this.refresh();
             if (this.currentChatId) {
@@ -45,18 +79,25 @@ export default {
             }
         }, 3000);
     },
+
+    // Pulizia dell'intervallo quando il componente viene distrutto per evitare memory leak
     unmounted() { clearInterval(this.refreshInterval); },
     methods: {
+        // Utility per convertire i dati binari (base64) in una stringa utilizzabile dal tag <img>.
+        // Gestisce sia stringhe già prefissate che raw base64.
         getImageSrc(base64Data) {
             if (!base64Data) return null;
             if (base64Data.startsWith('data:')) return base64Data;
             return `data:image/jpeg;base64,${base64Data}`;
         },
         
+        // Funzione principale di aggiornamento dati (Polling).
+        // Recupera la lista delle conversazioni e aggiorna i metadati della chat corrente se attiva.
         async refresh() {
              try {
                 const response = await api.getMyConversations(this.myId);
                 this.chats = response.data.chats || response.data || [];
+                // Aggiorna header chat corrente nel caso siano cambiati nome o foto
                 if (this.currentChatId) {
                     const activeChat = this.chats.find(c => c.id === this.currentChatId);
                     if (activeChat) {
@@ -67,6 +108,8 @@ export default {
             } catch (e) { console.error(e); }
         },
 
+        // Gestisce il click su una chat nella sidebar.
+        // Resetta lo stato della view (messaggi, reply, reazioni) e carica la conversazione.
         async selectChat(chatId) {
             this.currentChatId = chatId;
             this.loading = true;
@@ -75,6 +118,7 @@ export default {
             this.activeReactionMenuId = null; 
             this.showGroupInfoModal = false;
 
+            // Imposta header immediato dai dati in cache (per reattività UI)
             const selectedChat = this.chats.find(c => c.id === chatId);
             if (selectedChat) {
                 this.currentChatName = selectedChat.name;
@@ -82,8 +126,10 @@ export default {
             }
 
             try {
+                // Recupero messaggi dal server
                 const response = await api.getConversation(this.myId, chatId);
                 this.messages = response.data.messages || response.data || [];
+                // Scroll automatico in fondo dopo il rendering del DOM
                 this.$nextTick(() => this.scrollToBottom());
             } catch (e) {
                 this.errormsg = "Errore: " + e.toString();
@@ -91,6 +137,7 @@ export default {
             this.loading = false;
         },
 
+        // Apre il modale di gestione gruppo e carica i membri correnti.
         async openGroupInfo() {
             const chat = this.chats.find(c => c.id === this.currentChatId);
             if (!chat || !chat.isGroup) return;
@@ -101,6 +148,7 @@ export default {
             await this.loadGroupMembers();
         },
 
+        // Recupera la lista degli utenti appartenenti al gruppo corrente.
         async loadGroupMembers() {
             try {
                 const res = await api.getGroupMembers(this.currentChatId);
@@ -110,6 +158,7 @@ export default {
             }
         },
 
+        // Aggiunge un nuovo utente al gruppo tramite username.
         async addMemberToGroup() {
             const username = prompt("Inserisci lo username da aggiungere:");
             if (!username) return;
@@ -122,30 +171,34 @@ export default {
             }
         },
 
+        // Gestisce l'uscita dell'utente corrente dal gruppo.
         async leaveGroup() {
             if (!confirm("Sei sicuro di voler abbandonare il gruppo?")) return;
             try {
                 await api.leaveGroup(this.myId, this.currentChatId);
                 this.showGroupInfoModal = false;
-                this.currentChatId = null;
+                this.currentChatId = null; // Deseleziona la chat
                 await this.refresh();
             } catch (e) {
                 alert("Errore uscita: " + e.toString());
             }
         },
 
+        // Gestisce la selezione file locale per l'aggiornamento foto gruppo.
         onGroupFileChange(e) {
             const files = e.target.files || e.dataTransfer.files;
             if (!files.length) return;
             this.newGroupPhotoFile = files[0];
         },
 
+        // Gestisce la selezione file locale per l'invio di un'immagine in chat.
         onMessageFileChange(e) {
              const files = e.target.files || e.dataTransfer.files;
              if (!files.length) return;
              this.newPhotoFile = files[0];
         },
 
+        // Salva le modifiche al gruppo (Nome e/o Foto).
         async saveGroupSettings() {
             try {
                 if (this.newGroupName !== this.currentChatName) {
@@ -163,15 +216,18 @@ export default {
             }
         },
 
+        // Imposta il messaggio a cui si sta rispondendo e porta il focus sull'input.
         setReply(msg) {
             this.replyingToMsg = msg;
             this.$nextTick(() => this.$refs.inputField.focus());
         },
 
+        // Annulla la modalità risposta.
         cancelReply() {
             this.replyingToMsg = null;
         },
 
+        // Genera l'anteprima visuale del messaggio a cui si sta rispondendo (citazione).
         getReplySnippet(replyId) {
             if (!replyId) return { found: false, text: 'Messaggio non disponibile', authorId: null };
             const parent = this.messages.find(m => m.id === replyId);
@@ -183,17 +239,21 @@ export default {
             return { found: false, text: 'Messaggio non disponibile', authorId: null };
         },
 
+        // Invia un messaggio (Testo e/o Foto) alla chat corrente.
+        // Gestisce anche l'eventuale parametro `replyTo` se impostato.
         async sendMessage() {
             if (!this.newMessageText && !this.newPhotoFile) return;
             try {
                 const replyToId = this.replyingToMsg ? this.replyingToMsg.id : 0;
                 await api.sendMessage(this.myId, this.currentChatId, this.newMessageText, this.newPhotoFile, replyToId, false);
                 
+                // Reset campi input
                 this.newMessageText = "";
                 this.newPhotoFile = null; 
                 if(this.$refs.msgFileInput) this.$refs.msgFileInput.value = "";
 
                 this.replyingToMsg = null;
+                // Ricarica la chat per mostrare il nuovo messaggio e aggiorna la lista laterale
                 await this.selectChat(this.currentChatId);
                 this.refresh(); 
             } catch (e) {
@@ -201,17 +261,20 @@ export default {
             }
         },
 
+        // Inoltra un messaggio esistente a un altro utente.
+        // Crea (o recupera) una conversazione con il destinatario e invia una copia del messaggio con flag isForward=true.
         async forwardMsg(msg) {
             const targetUsername = prompt(`A quale utente (username) vuoi inoltrare questo messaggio?`);
             if (!targetUsername) return;
             try {
+                // Ottiene ID chat target
                 const res = await api.createConversation(this.myId, targetUsername);
                 const targetChatId = res.data.id || res.data.Id;
+                // Invia messaggio inoltrato (nota: testo vuoto perché clona dal messaggio originale lato server)
                 await api.sendMessage(this.myId, targetChatId, "", null, msg.id, true);
                 alert("Messaggio inoltrato!");
                 this.refresh();
             } catch (e) {
-
                 if (e.response && e.response.status === 404) {
                     alert("Errore inoltro: Utente destinatario non trovato.");
                 } else {
@@ -220,11 +283,13 @@ export default {
             }
         },
 
+        // Scorre la finestra della chat fino all'ultimo messaggio.
         scrollToBottom() {
             const container = this.$refs.messageContainer;
             if (container) container.scrollTop = container.scrollHeight;
         },
 
+        // Elimina un messaggio (solo se l'utente ne è l'autore).
         async deleteMsg(messageId) {
             if(!confirm("Eliminare messaggio?")) return;
             try {
@@ -233,6 +298,7 @@ export default {
             } catch (e) { alert(e.toString()); }
         },
 
+        // Crea un nuovo gruppo specificando nome e membri iniziali.
         async createGroup() {
             const name = prompt("Nome gruppo:");
             if (!name) return;
@@ -240,7 +306,6 @@ export default {
             const membersStr = prompt("Inserisci gli username dei membri separati da virgola (es: luca, marco):");
             
             try { 
-
                 const members = membersStr ? membersStr.split(',').map(s => s.trim()).filter(s => s) : [];
           
                 await api.createGroup(this.myId, name, members, null);
@@ -248,11 +313,12 @@ export default {
                 await this.refresh(); 
                 alert("Gruppo creato!");
             } catch (e) { 
-
                 alert("Errore creazione gruppo: " + (e.response?.data?.message || e.response?.data || e.toString())); 
             }
         },
 
+        // Avvia una nuova chat privata (Direct Message).
+        // Se la chat esiste già, la API la restituisce e il frontend la seleziona.
         async startConversation() {
             const otherUsername = prompt("Username:");
             if (!otherUsername) return;
@@ -270,6 +336,7 @@ export default {
              }
         },
 
+        // Formatta la data ISO in formato leggibile (gg/mm hh:mm).
         formatDate(isoString) {
             if (!isoString || isoString.startsWith('0001')) return '';
             const d = new Date(isoString);
@@ -278,10 +345,12 @@ export default {
             });
         },
 
+        // Aggiunge una reazione a un messaggio e aggiorna la vista.
         async reactToMsg(msgId, emoji) {
             try {
                 await api.commentMessage(this.myId, this.currentChatId, msgId, emoji);
                 this.activeReactionMenuId = null; 
+                // Refresh immediato per vedere la reazione
                 const res = await api.getConversation(this.myId, this.currentChatId);
                 this.messages = res.data.messages || res.data || [];
             } catch (e) {
@@ -289,6 +358,7 @@ export default {
             }
         },
 
+        // Rimuove una reazione precedentemente messa.
         async removeReaction(msgId) {
             try {
                 await api.uncommentMessage(this.myId, this.currentChatId, msgId);
@@ -297,6 +367,7 @@ export default {
             } catch (e) { console.error(e); }
         },
 
+        // Mostra/Nasconde il menu pop-up per la selezione delle emoji.
         toggleReactionMenu(msgId) {
             if (this.activeReactionMenuId === msgId) {
                 this.activeReactionMenuId = null;

@@ -1,4 +1,5 @@
-# Build del progetto Vue
+# Stage 1: Build
+# Usa Node.js su Alpine per installare le dipendenze e compilare il progetto Vue.
 FROM node:lts-alpine AS build-stage
 
 WORKDIR /app
@@ -10,16 +11,18 @@ RUN npm install
 # Copia il codice sorgente del frontend
 COPY webui/ .
 
-# Esegue la build (crea la cartella dist)
+# Esegue la build di produzione (crea la cartella 'dist' ottimizzata e minificata)
 RUN npm run build
 
-# Serve con Nginx
+# Stage 2: Production
+# Usa Nginx per servire i file statici generati. Molto più performante di Node per file statici.
 FROM nginx:stable-alpine AS production-stage
 
-# Copia i file compilati nella cartella di Nginx
+# Copia i file compilati dalla cartella dist dello stage precedente alla root web di Nginx
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 
-# Espone la porta 80, standard per il web
+# Espone la porta 80, standard per il traffico web HTTP
 EXPOSE 80
 
+# Avvia Nginx in primo piano (daemon off)
 CMD ["nginx", "-g", "daemon off;"]

@@ -19,10 +19,9 @@
 <script>
 import api from '@/services/api';
 
-// Componente per la gestione del Login.
-// Fornisce un modulo semplice per inserire lo username.
-// Invia la richiesta di autenticazione all'API e, in caso di successo,
-// salva il token di sessione (ID utente) e reindirizza alla home page.
+// Componente LoginView.
+// Gestisce l'ingresso nell'applicazione. Poiché la registrazione è implicita (se l'utente non esiste, viene creato),
+// questo form serve sia per il Sign-In che per il Sign-Up.
 export default {
   data() {
     return {
@@ -31,14 +30,19 @@ export default {
     };
   },
   methods: {
-    // Esegue la procedura di login. Gestisce la risposta dell'API estraendo
-    // l'identificativo utente e salvandolo in sessionStorage.
+    // Esegue la procedura di login. 
+    // 1. Chiama l'API.
+    // 2. Parsa l'ID utente dalla risposta (gestendo vari formati possibili).
+    // 3. Salva i dati essenziali in sessionStorage (persistenza solo per la sessione corrente del browser).
+    // 4. Reindirizza alla Home.
     async doLogin() {
       try {
         const response = await api.doLogin(this.username);
         
+        // Normalizzazione della risposta per estrarre l'ID utente
         let userId = response.data.id || response.data.identifier || response.data.userId;
 
+        // Fallback per risposte che contengono direttamente l'ID numerico
         if (!userId && typeof response.data === 'number') {
              userId = response.data;
         }
@@ -49,16 +53,21 @@ export default {
             return;
         }
         
+        // Pulizia sessione precedente
         sessionStorage.clear();
+
+        // Tentativo di recupero foto dalla cache locale (LocalStorage) per evitare flash grafici
         const savedPhoto = localStorage.getItem(`wasa_photo_${userId}`);
         if (savedPhoto) {
             sessionStorage.setItem('userPhoto', savedPhoto);
         }
 
+        // Salvataggio credenziali di sessione
         sessionStorage.setItem('token', userId); 
         sessionStorage.setItem('userId', userId);
         sessionStorage.setItem('username', this.username);
         
+        // Navigazione alla dashboard
         this.$router.push('/');
       } catch (e) {
         this.error = "Login fallito: " + (e.response?.data?.message || e.message);

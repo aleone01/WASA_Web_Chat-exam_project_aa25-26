@@ -4,13 +4,18 @@ import (
 	"database/sql"
 )
 
-// GetMyConversations recupera l'elenco di tutte le conversazioni (sia gruppi che chat private) a cui partecipa l'utente.
-// Per ogni chat, restituisce l'ultimo messaggio scambiato (testo o foto), il timestamp e le informazioni sull'interlocutore o sul gruppo.
-// I risultati sono ordinati cronologicamente in base all'ultimo messaggio.
+// GetMyConversations è la funzione principale per popolare la schermata "Chat" dell'app.
+// Recupera tutte le chat (gruppi e private) associate all'utente.
+// Per ogni chat calcola dinamicamente:
+// - L'anteprima dell'ultimo messaggio (testo o "📷 Foto").
+// - Il timestamp dell'ultimo messaggio per l'ordinamento.
+// - Il nome da visualizzare: nome del gruppo (se gruppo) o username dell'altro utente (se chat privata).
+// - La foto da visualizzare: foto del gruppo o foto profilo dell'altro utente.
 func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 
 	chats := make([]ChatListItem, 0)
 
+	// Query complessa che usa JOIN multiple e subquery correlate per estrarre l'ultimo messaggio per ogni chat.
 	query := `
 		SELECT 
 			c.id, 
@@ -37,6 +42,7 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 	}
 	defer rows.Close()
 
+	// Parsing dei risultati
 	for rows.Next() {
 		var c ChatListItem
 		var groupName string
@@ -49,6 +55,7 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 
 		c.SnippetIcon = ""
 
+		// Parsing dei risultati che possono contenere valori NULL (sql.Null*)
 		if err := rows.Scan(&c.Id, &c.IsGroup, &groupName, &groupPhoto, &lastTime, &lastText, &lastPhoto, &otherUsername, &otherPhoto); err != nil {
 			continue
 		}
@@ -57,6 +64,7 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 			c.LastMessage = lastTime.Time
 		}
 
+		// Logica per determinare lo snippet (anteprima)
 		if lastText.Valid && lastText.String != "" {
 			c.SnippetText = lastText.String
 		} else if len(lastPhoto) > 0 {
@@ -65,10 +73,12 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 			c.SnippetText = ""
 		}
 
+		// Logica per determinare Nome e Icona della chat
 		if c.IsGroup {
 			c.Name = groupName
 			c.PhotoChat = groupPhoto
 		} else {
+			// Se è una chat privata, usiamo i dati dell'interlocutore
 			if otherUsername.Valid {
 				c.Name = otherUsername.String
 			} else {
@@ -91,12 +101,13 @@ func (db *appdbimpl) GetMyConversations(userId int) ([]ChatListItem, error) {
 	return chats, nil
 }
 
-// GetChatWithUser verifica se esiste già una chat privata (non gruppo) tra due utenti specifici.
-// Restituisce una lista contenente la chat trovata (se esiste), completa di informazioni sull'altro utente.
+// GetChatWithUser cerca se esiste una conversazione diretta (1-a-1) tra l'utente richiedente e un target.
+// Viene usata per evitare di creare chat duplicate quando si clicca "Nuova Chat" con un utente con cui si è già parlato.
 func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatListItem, error) {
 
 	var chats []ChatListItem
 
+	// Recupero ID dell'utente target
 	var targetId int
 	var targetPhoto []byte
 	err := db.c.QueryRow("SELECT id, profile_photo FROM users WHERE username = ?", targetUsername).Scan(&targetId, &targetPhoto)
@@ -104,6 +115,7 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 		return chats, nil
 	}
 
+	// Query che cerca una chat non-gruppo che contenga entrambi gli ID utente
 	query := `
 		SELECT c.id, c.is_group
 		FROM chats c
@@ -117,6 +129,7 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 	}
 	defer rows.Close()
 
+	// Parsing dei risultati
 	for rows.Next() {
 		var c ChatListItem
 		c.SnippetText = ""
@@ -140,12 +153,13 @@ func (db *appdbimpl) GetChatWithUser(userId int, targetUsername string) ([]ChatL
 	return chats, nil
 }
 
-// CreateConversation inizializza una nuova conversazione privata tra due utenti.
-// Crea una nuova voce nella tabella chats e associa entrambi gli utenti nella tabella members.
-// Restituisce l'oggetto ChatListItem inizializzato per l'interfaccia utente.
+// CreateConversation crea una nuova chat privata (Direct Message) tra due utenti.
+// Inserisce una riga in 'chats' e due righe in 'members'.
+// Restituisce l'oggetto ChatListItem pronto per essere aggiunto alla lista chat del frontend.
 func (db *appdbimpl) CreateConversation(user1 int, user2 int) (ChatListItem, error) {
 	var chat ChatListItem
 
+	// Creazione chat
 	res, err := db.c.Exec("INSERT INTO chats (is_group) VALUES (FALSE)")
 	if err != nil {
 		return chat, err
@@ -157,16 +171,19 @@ func (db *appdbimpl) CreateConversation(user1 int, user2 int) (ChatListItem, err
 	}
 	chatId := int(lastId)
 
+	// Associazione Membro 1
 	_, err = db.c.Exec("INSERT INTO members (chat_id, user_id) VALUES (?, ?)", chatId, user1)
 	if err != nil {
 		return chat, err
 	}
 
+	// Associazione Membro 2
 	_, err = db.c.Exec("INSERT INTO members (chat_id, user_id) VALUES (?, ?)", chatId, user2)
 	if err != nil {
 		return chat, err
 	}
 
+	// Recupero info secondo utente per popolare il nome chat
 	var otherName string
 	var otherPhoto []byte
 	err = db.c.QueryRow("SELECT username, profile_photo FROM users WHERE id = ?", user2).Scan(&otherName, &otherPhoto)
@@ -186,16 +203,19 @@ func (db *appdbimpl) CreateConversation(user1 int, user2 int) (ChatListItem, err
 	return chat, nil
 }
 
-// GetConversation recupera la cronologia completa dei messaggi di una chat specifica.
-// Esegue una join con la tabella utenti per includere il nome del mittente in ogni messaggio.
-// Inoltre, marca automaticamente come letti tutti i messaggi inviati dagli altri partecipanti.
+// GetConversation recupera l'intera history dei messaggi di una chat.
+// Esegue due operazioni importanti:
+// 1. "Side Effect": Segna come LETTI (is_read=TRUE) tutti i messaggi inviati dagli altri utenti in questa chat (Read Receipt).
+// 2. Recupero dati: Estrae messaggi ordinati per data e arricchiti con reazioni.
 func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) {
 
+	// Update per le spunte blu (letto)
 	_, err := db.c.Exec("UPDATE messages SET is_read = TRUE WHERE chat_id = ? AND user_id != ?", chatId, userId)
 	if err != nil {
 		return nil, err
 	}
 
+	// Query principale messaggi + JOIN username mittente
 	query := `
 		SELECT 
 			m.id, m.chat_id, m.user_id, m.text, m.photo_file, m.sent_at, m.is_read,
@@ -225,6 +245,7 @@ func (db *appdbimpl) GetConversation(userId int, chatId int) ([]Message, error) 
 			m.PhotoFile = []byte{}
 		}
 
+		// Per ogni messaggio, recuperiamo le eventuali reazioni
 		m.Reactions = make([]Reaction, 0)
 		reactionRows, err := db.c.Query("SELECT r.emoticon, u.username FROM reactions r JOIN users u ON r.user_id = u.id WHERE r.message_id = ?", m.Id)
 		if err == nil {
