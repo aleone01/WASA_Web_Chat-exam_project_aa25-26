@@ -3,6 +3,7 @@
 # Utilizziamo un'immagine con tutti i tool di compilazione necessari
 FROM golang:1.25-alpine AS builder
 
+# Imposta la working directory
 WORKDIR /app
 
 # Installa git e build-base (gcc) necessari per compilare SQLite tramite CGO.
@@ -15,7 +16,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copia tutto il codice sorgente
-COPY . .
+COPY . . 
 
 # Abilita CGO (C Go) indispensabile per il driver go-sqlite3 e compila il binario.
 # -o webapi definisce il nome dell'eseguibile di output.

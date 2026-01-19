@@ -2,6 +2,7 @@
 # Usa Node.js su Alpine per installare le dipendenze e compilare il progetto Vue.
 FROM node:lts-alpine AS build-stage
 
+# Imposta la working directory
 WORKDIR /app
 
 # Copia package.json e installa dipendenze

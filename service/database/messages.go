@@ -12,15 +12,17 @@ import (
 func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoFile []byte, sentAt time.Time, replyTo int, isForward bool) (Message, error) {
 	var m Message
 
-	// Query aggiornata: photo_url diventa photo_file
+	// Query di inserimento con gestione dei campi opzionali
 	query := `INSERT INTO messages (chat_id, user_id, text, photo_file, sent_at, is_read, reply_to_message_id, is_forward) VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)`
 
+	// Gestione del campo opzionale replyTo
 	var replyToVal sql.NullInt64
 	if replyTo > 0 {
 		replyToVal.Int64 = int64(replyTo)
 		replyToVal.Valid = true
 	}
 
+	// Esecuzione dell'inserimento
 	res, err := db.c.Exec(query, chatId, userId, text, photoFile, sentAt, replyToVal, isForward)
 	if err != nil {
 		return m, err
@@ -31,6 +33,7 @@ func (db *appdbimpl) CreateMessage(chatId int, userId int, text string, photoFil
 		return m, err
 	}
 
+	// Costruzione dell'oggetto Message da restituire
 	m.Id = int(lastId)
 	m.ChatId = chatId
 	m.SentBy = userId
